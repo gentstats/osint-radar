@@ -6,26 +6,27 @@ Las categorías se definen en lenguaje natural desde el dashboard. Para pasar de
 
 ## Características
 
-- **Ingesta** de feeds RSS/Atom y consultas GDELT, con intervalo configurable por fuente.
+- **Ingesta** de feeds RSS/Atom y consultas GDELT (con cola global de rate-limit), con intervalo configurable por fuente.
 - **Clasificación semántica**: cada categoría es una descripción más titulares de ejemplo; los artículos se asignan por similitud coseno. Funciona entre idiomas.
 - **Eventos**: los artículos que cuentan lo mismo se agrupan por similitud con el centroide del evento. Cada evento conoce cuándo salió su primera noticia y cuál es su **estado** (`activo`, `enfriándose`, `caducado`), calculado al consultar.
 - **Enriquecimiento**: un LLM extrae por evento un título limpio, un resumen, un tipo, los **actores** (con rol) y los **lugares** implicados.
 - **Entidades autogeneradas**: actores y lugares se fusionan entre menciones (alias + embeddings) y los lugares se geocodifican una sola vez.
-- **Mapa** de eventos por localización.
+- **Mapa** de eventos por localización con Mapbox GL JS.
 - **Tendencias y anomalías** por categoría (z-score frente a la media de los días previos).
 - **Briefing diario** redactado por un LLM a partir de los eventos de las últimas 24 h.
-- **Persistencia** en un único archivo SQLite (`bun:sqlite`), sin servicios externos salvo Gemini y los geocodificadores.
+- **Persistencia** en un único archivo SQLite (`bun:sqlite`), sin servicios externos salvo Gemini, los geocodificadores y Mapbox (solo en la vista Mapa).
 
 ## Requisitos
 
 - [Bun](https://bun.sh) 1.1 o superior.
 - Una clave gratuita de Google AI Studio: https://aistudio.google.com
+- Un token público de [Mapbox](https://www.mapbox.com/) (`pk.…`) si quieres usar la vista **Mapa** (el resto del dashboard funciona sin él).
 
 ## Puesta en marcha
 
 ```bash
 bun install
-cp .env.example .env     # rellena GEMINI_API_KEY y ADMIN_TOKEN
+cp .env.example .env     # rellena GEMINI_API_KEY, ADMIN_TOKEN y MAPBOX_TOKEN
 bun run dev
 ```
 
@@ -46,6 +47,7 @@ Las bases de datos anteriores se migran solas al arrancar (se añaden las column
 | `EMBEDDING_MODEL` | `gemini-embedding-001` | Modelo de embeddings |
 | `DIGEST_MODEL` | `gemini-2.5-flash` | Modelo del briefing |
 | `EXTRACTION_MODEL` | `gemini-2.5-flash` | Modelo que extrae actores, lugares y resúmenes |
+| `MAPBOX_TOKEN` | *(vacío)* | Token público de Mapbox (`pk.…`) para la vista Mapa |
 
 ## Cómo funciona
 
@@ -120,7 +122,7 @@ El LLM aporta el **nombre** del lugar, no la coordenada. Cada lugar nuevo se geo
 
 ```
 osint-radar/
-├── dashboard.html        Panel de administración (HTML + JS; Leaflet se carga solo en la vista Mapa)
+├── dashboard.html        Panel de administración (HTML + JS; Mapbox GL JS se carga solo en la vista Mapa)
 ├── scripts/
 │   └── dump.ts           Vuelca el código del proyecto en un solo .md
 └── src/
@@ -154,22 +156,23 @@ osint-radar/
 |---|---|
 | **Resumen** | KPIs, volumen diario, actores y lugares más activos, tendencias con anomalías, últimos ciclos. Botones para ejecutar un ciclo, enriquecer, reclasificar y reindexar |
 | **Eventos** | Filtros por periodo, estado y tipo. Muestra resumen, primera noticia, actores y lugares (clicables). Al desplegar: roles y artículos |
-| **Mapa** | Eventos por lugar, con tamaño según el número de medios y color según actividad |
+| **Mapa** | Eventos por lugar (filtrables por periodo y estado), con tamaño según el número de medios y color según actividad (`Activo` vs. `Enfriándose / caducado`) |
 | **Entidades** | Actores y lugares con filtros y búsqueda por alias. Ficha con alias, coocurrencias y eventos |
 | **Artículos** | Listado filtrable por texto, categoría y fuente, con la similitud de cada categoría |
 | **Categorías** | Crear y editar categorías (descripción, ejemplos, umbral) |
-| **Fuentes** | Añadir, activar, descargar al momento y ver el último error de cada fuente |
+| **Fuentes** | Añadir, editar en línea, filtrar (por texto, tipo o errores), activar, descargar al momento, añadir las fuentes recomendadas y ver el último error |
 | **Briefing** | Genera y muestra el resumen de las últimas 24 h |
 | **Ajustes** | Eventos, enriquecimiento, geocodificación, retención y planificador |
 
-El mapa usa Leaflet y teselas de CARTO/OpenStreetMap, cargados desde su CDN solo al abrir esa vista (necesita conexión). El resto del dashboard no tiene dependencias.
+El mapa usa **Mapbox GL JS** (`v3.28.0`, estilo `dark-v11`), cargado desde `api.mapbox.com` únicamente al abrir esa vista (necesita conexión y `MAPBOX_TOKEN`). La instancia del mapa se reutiliza en memoria al cambiar filtros o navegar entre pestañas para no generar cargas facturables innecesarias. El resto del dashboard no tiene dependencias externas.
 
 ## API
 
-Todas las rutas cuelgan de `/api` y requieren `Authorization: Bearer <ADMIN_TOKEN>` si hay token configurado. `/health` es público.
+Todas las rutas cuelgan de `/api` y requieren `Authorization: Bearer <ADMIN_TOKEN>` si hay token configurado. `/health` y `/dashboard` son públicos.
 
 | Método | Ruta | Descripción |
 |---|---|---|
+| GET | `/config` | Configuración pública para el cliente (`mapboxToken`) |
 | GET | `/overview` | KPIs y volumen diario |
 | GET | `/trends` | Tendencia y anomalías por categoría |
 | GET | `/runs` | Últimas ejecuciones |
@@ -180,6 +183,7 @@ Todas las rutas cuelgan de `/api` y requieren `Authorization: Bearer <ADMIN_TOKE
 | GET | `/entities/:id` | Entidad con alias y coocurrencias |
 | GET | `/articles?limit=&offset=&category=&source=&q=` | Listado de artículos |
 | GET/POST | `/sources` | Listar / crear fuentes |
+| POST | `/sources/defaults` | Añadir las fuentes recomendadas que falten |
 | PATCH/DELETE | `/sources/:id` | Editar / eliminar fuente |
 | POST | `/sources/:id/fetch` | Descargar una fuente ahora |
 | GET/POST | `/categories` | Listar / crear categorías |
@@ -210,10 +214,10 @@ Si cambias `EMBEDDING_MODEL` o `EMBEDDING_DIMENSIONS`, usa **Reindexar todo**: l
 | Eventos sin actores ni lugares | Falta `GEMINI_API_KEY`, `enrichEnabled` está desactivado o los eventos no llegan a `enrichMinSources` medios. Prueba a bajarlo a 1 |
 | Lugares sin coordenadas | Open-Meteo y Nominatim no lo conocen o no hay red. Los lugares fallidos no se reintentan; los errores de red sí |
 | Actores distintos fusionados o duplicados | Ajusta `entityMergeSimilarity` en Ajustes (más alto = fusiona menos) |
-| Una fuente muestra error | La URL del feed cambió o el sitio bloquea peticiones automáticas. El error aparece en **Fuentes** |
+| Una fuente muestra error | La URL del feed cambió o el sitio bloquea peticiones automáticas. El error aparece en **Fuentes** y puedes editarla allí mismo |
 | Errores de cuota de Gemini | El ciclo falla (o el enriquecimiento se salta) y se reintenta al minuto siguiente; nada se pierde |
-| GDELT devuelve errores intermitentes | Limita a ~1 petición cada 5 s; el servidor ya espera entre consultas |
-| El mapa no carga | Necesita conexión para descargar Leaflet y las teselas |
+| GDELT devuelve errores intermitentes | Limita a ~1 petición cada 5 s; el servidor ya serializa y espera entre consultas |
+| El mapa no carga o muestra error de token | Falta `MAPBOX_TOKEN` (`pk.…`) en `.env`, el token está caducado o restringido por URL, o no hay conexión para descargar Mapbox GL JS y los estilos |
 
 ## Scripts
 
@@ -226,14 +230,6 @@ Si cambias `EMBEDDING_MODEL` o `EMBEDDING_DIMENSIONS`, usa **Reindexar todo**: l
 ## Seguridad
 
 - Define siempre `ADMIN_TOKEN` si el puerto es accesible desde fuera de tu máquina. Sin él, cualquiera puede crear fuentes y hacer que el servidor descargue URLs arbitrarias.
-- El HTML del dashboard se sirve sin token porque no contiene datos; todos los datos pasan por la API autenticada.
+- El HTML del dashboard se sirve sin token porque no contiene datos; todos los datos (incluido `MAPBOX_TOKEN`) pasan por la API autenticada.
+- Usa en `MAPBOX_TOKEN` únicamente un token público (`pk.…`), nunca un token secreto (`sk.…`), y restringe sus URLs permitidas en tu cuenta de Mapbox si expones el servidor.
 - Nunca subas `.env` ni `data/` al repositorio (ya están en `.gitignore`).
-
-## Hoja de ruta
-
-- Peso de fiabilidad por fuente para ordenar eventos.
-- Botón «mal clasificado» que añada el titular como ejemplo de la categoría correcta.
-- Tendencias y anomalías por entidad (reutilizando el z-score de las categorías).
-- Fusión manual de entidades desde el dashboard.
-- GKG de GDELT como verificación cruzada de entidades y localizaciones.
-- Ciclo en segundo plano con progreso consultable desde el dashboard.
