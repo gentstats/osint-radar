@@ -61,6 +61,9 @@ const api = new Hono();
 if (env.adminToken) api.use("*", bearerAuth({ token: env.adminToken }));
 else console.warn("⚠️  ADMIN_TOKEN vacío: la API no tiene autenticación");
 
+// Config
+api.get("/config", (c) => c.json({ mapboxToken: env.mapboxToken }));
+
 // Métricas y datos
 api.get("/overview", (c) => c.json(getOverview()));
 api.get("/trends", (c) => c.json(getCategoryTrends()));

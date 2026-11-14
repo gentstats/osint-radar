@@ -20,6 +20,7 @@ export const env = {
     embeddingModel: Bun.env.EMBEDDING_MODEL ?? "gemini-embedding-001",
     digestModel: Bun.env.DIGEST_MODEL ?? "gemini-2.5-flash",
     extractionModel: Bun.env.EXTRACTION_MODEL ?? "gemini-2.5-flash",
+    mapboxToken: Bun.env.MAPBOX_TOKEN ?? "",
 };
 
 /** Ajustes editables desde el dashboard (se guardan en la tabla `settings`). */

@@ -7,12 +7,13 @@
     <title>Radar OSINT · Admin</title>
     <style>
         :root {
+            color-scheme: dark;
             --bg: #0f1218;
             --panel: #161b26;
             --panel-2: #1e2433;
             --line: #262d3d;
             --text: #d7dbe6;
-            --muted: #7d8599;
+            --muted: #939bb0;
             --green: #1ed760;
             --blue: #2962ff;
             --red: #f23645;
@@ -22,6 +23,11 @@
 
         * {
             box-sizing: border-box;
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--blue);
+            outline-offset: 2px;
         }
 
         body {
@@ -314,7 +320,7 @@
 
         .chip.status-expired {
             background: var(--panel-2);
-            color: var(--muted);
+            color: #b4bcd0;
         }
 
         .event-summary {
@@ -401,22 +407,214 @@
             margin-left: 18px;
         }
 
-        #map {
+        /* ---- Mapa (Mapbox GL JS) ---- */
+        .map-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .map-meta p {
+            margin: 0;
+        }
+
+        .map-legend {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .map-legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .map-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            border: 2px solid currentColor;
+        }
+
+        .map-dot.active {
+            color: var(--green);
+            background: rgba(30, 215, 96, .35);
+        }
+
+        .map-dot.inactive {
+            color: var(--muted);
+            background: rgba(147, 155, 176, .3);
+        }
+
+        #event-map {
             height: 68vh;
             min-height: 380px;
             border-radius: 12px;
             border: 1px solid var(--line);
             background: #0b0e14;
+            overflow: hidden;
         }
 
-        #view .leaflet-popup-content-wrapper,
-        #view .leaflet-popup-tip {
+        #event-map .mapboxgl-popup-content {
             background: var(--panel);
+            color: var(--text);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 12px 34px 12px 14px;
+            font: 13px/1.5 Inter, system-ui, sans-serif;
+            max-height: 300px;
+            overflow: auto;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, .65);
+        }
+
+        #event-map .mapboxgl-popup-content a {
+            color: #7ea6ff;
+        }
+
+        #event-map .mapboxgl-popup-close-button {
+            color: var(--muted);
+            font-size: 18px;
+            width: 28px;
+            height: 28px;
+            top: 6px;
+            right: 6px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            line-height: 1;
+        }
+
+        #event-map .mapboxgl-popup-close-button:hover,
+        #event-map .mapboxgl-popup-close-button:focus-visible {
+            background: var(--panel-2);
             color: var(--text);
         }
 
-        #view .leaflet-popup-content div {
-            padding: 2px 0;
+        #event-map .mapboxgl-popup-anchor-top .mapboxgl-popup-tip,
+        #event-map .mapboxgl-popup-anchor-top-left .mapboxgl-popup-tip,
+        #event-map .mapboxgl-popup-anchor-top-right .mapboxgl-popup-tip {
+            border-bottom-color: var(--panel);
+        }
+
+        #event-map .mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip,
+        #event-map .mapboxgl-popup-anchor-bottom-left .mapboxgl-popup-tip,
+        #event-map .mapboxgl-popup-anchor-bottom-right .mapboxgl-popup-tip {
+            border-top-color: var(--panel);
+        }
+
+        #event-map .mapboxgl-popup-anchor-left .mapboxgl-popup-tip {
+            border-right-color: var(--panel);
+        }
+
+        #event-map .mapboxgl-popup-anchor-right .mapboxgl-popup-tip {
+            border-left-color: var(--panel);
+        }
+
+        /* Controles y atribución de Mapbox en modo oscuro y accesibles */
+        #event-map .mapboxgl-ctrl-group {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, .5);
+            overflow: hidden;
+        }
+
+        #event-map .mapboxgl-ctrl-group button {
+            background-color: transparent;
+            width: 32px;
+            height: 32px;
+        }
+
+        #event-map .mapboxgl-ctrl-group button+button {
+            border-top: 1px solid var(--line);
+        }
+
+        #event-map .mapboxgl-ctrl-group button:hover,
+        #event-map .mapboxgl-ctrl-group button:focus-visible {
+            background-color: var(--panel-2);
+        }
+
+        #event-map .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon {
+            filter: invert(0.9);
+        }
+
+        #event-map .mapboxgl-ctrl-group button:disabled .mapboxgl-ctrl-icon {
+            opacity: .35;
+        }
+
+        #event-map .mapboxgl-ctrl-attrib {
+            background-color: rgba(15, 18, 24, .88);
+            color: var(--muted);
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            margin: 0 8px 8px 0;
+            padding: 2px 8px;
+            font-size: 11px;
+            backdrop-filter: blur(4px);
+        }
+
+        #event-map .mapboxgl-ctrl-attrib a {
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        #event-map .mapboxgl-ctrl-attrib a:hover {
+            text-decoration: underline;
+        }
+
+        #event-map .mapboxgl-ctrl-attrib.mapboxgl-compact {
+            background-color: rgba(15, 18, 24, .92);
+            padding: 0;
+            min-height: 26px;
+            min-width: 26px;
+            border-radius: 999px;
+        }
+
+        #event-map .mapboxgl-ctrl-attrib.mapboxgl-compact-show {
+            padding: 2px 28px 2px 10px;
+        }
+
+        #event-map .mapboxgl-ctrl-attrib-button {
+            background-color: transparent;
+            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='%23d7dbe6'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z'/%3E%3C/svg%3E");
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: 18px 18px;
+            width: 26px;
+            height: 26px;
+            border-radius: 999px;
+        }
+
+        #event-map .mapboxgl-ctrl-attrib-button:hover {
+            background-color: var(--panel-2);
+        }
+
+        .map-popup-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .map-popup-item {
+            padding: 6px 0;
+            border-top: 1px solid var(--line);
+        }
+
+        .map-popup-meta {
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 2px;
         }
 
         #toast {
@@ -497,7 +695,7 @@
         // ---------- API ----------
         let token = localStorage.getItem("adminToken") ?? "";
 
-        async function api(path, { method = "GET", body } = {}) {
+        async function api(path, { method = "GET", body, signal } = {}) {
             const headers = { "content-type": "application/json" };
             if (token) headers.authorization = `Bearer ${token}`;
 
@@ -505,6 +703,7 @@
                 method,
                 headers,
                 body: body === undefined ? undefined : JSON.stringify(body),
+                signal,
             });
 
             if (response.status === 401) {
@@ -512,7 +711,7 @@
                 if (input === null) throw new Error("Token requerido");
                 token = input.trim();
                 localStorage.setItem("adminToken", token);
-                return api(path, { method, body });
+                return api(path, { method, body, signal });
             }
             if (!response.ok) {
                 const data = await response.json().catch(() => ({}));
@@ -679,83 +878,271 @@
     </table></div>`;
         }
 
-        // ---------- Mapa (Leaflet se carga solo al abrir la vista) ----------
-        const LEAFLET = "https://unpkg.com/leaflet@1.9.4/dist/leaflet";
-        let leafletReady;
-        let leafletMap;
+        // ---------- Mapa (Mapbox GL JS, se carga solo al abrir la vista) ----------
+        const MAPBOX_VERSION = "v3.28.0";
+        const MAPBOX_BASE = `https://api.mapbox.com/mapbox-gl-js/${MAPBOX_VERSION}/mapbox-gl`;
+        const MAP_STYLE = "mapbox://styles/mapbox/dark-v11";
 
-        function loadLeaflet() {
-            leafletReady ??= new Promise((resolve, reject) => {
-                const css = document.createElement("link");
-                css.rel = "stylesheet";
-                css.href = `${LEAFLET}.css`;
-                css.integrity = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
-                css.crossOrigin = "";
-                document.head.append(css);
+        /**
+         * Mapbox cobra por cada carga de mapa (cada `new Map`), así que se crea UNA sola instancia
+         * y se reutiliza: su contenedor vive en memoria y se coloca en la vista Mapa al entrar.
+         * Cambiar filtros o salir y volver no recrea el mapa; solo se actualizan los datos.
+         */
+        const mapEl = Object.assign(document.createElement("div"), { id: "event-map" });
+        let mapboxToken;
+        let mapboxReady;
+        let map;
+        let mapLoaded;
+        let mapPopup;
+        let mapGroups = new Map();
+        let mapAbort;
+        let mapFitted = false;
 
-                const script = document.createElement("script");
-                script.src = `${LEAFLET}.js`;
-                script.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
-                script.crossOrigin = "";
-                script.onload = () => resolve(window.L);
-                script.onerror = () => reject(new Error("No se pudo cargar Leaflet (¿sin conexión?)"));
-                document.head.append(script);
-            }).catch((error) => { leafletReady = undefined; throw error; });
-            return leafletReady;
+        function appendAndWait(element, prepend = false) {
+            return new Promise((resolve, reject) => {
+                element.onload = resolve;
+                element.onerror = () => {
+                    element.remove();
+                    reject(new Error("No se pudo cargar Mapbox GL JS (¿sin conexión?)"));
+                };
+                if (prepend) document.head.prepend(element);
+                else document.head.append(element);
+            });
+        }
+
+        function loadMapbox() {
+            mapboxReady ??= (async () => {
+                const css = Object.assign(document.createElement("link"), { rel: "stylesheet", href: `${MAPBOX_BASE}.css` });
+                const script = Object.assign(document.createElement("script"), { src: `${MAPBOX_BASE}.js` });
+                // Se inserta el CSS antes de <style> para que los estilos oscuros del mapa tengan prioridad.
+                await Promise.all([appendAndWait(css, true), appendAndWait(script)]);
+                return window.mapboxgl;
+            })().catch((error) => { mapboxReady = undefined; throw error; });
+            return mapboxReady;
+        }
+
+        async function getMapboxToken() {
+            if (mapboxToken === undefined) mapboxToken = (await api("/config")).mapboxToken || "";
+            return mapboxToken;
         }
 
         /** Donde ocurre el evento: primero "occurred", si no cualquier lugar con coordenadas. */
         const primaryPlace = (event) =>
             event.locations.find((p) => p.role === "occurred" && p.lat != null) ?? event.locations.find((p) => p.lat != null);
 
+        function popupHtml({ place, events }) {
+            const shown = events.slice(0, 8).map((e) => `
+          <div class="map-popup-item">
+            <div>${statusChip(e.status)} ${esc(e.title)}</div>
+            <div class="map-popup-meta">${e.source_count} medios · primera noticia ${timeAgo(e.first_seen_at)}</div>
+          </div>`).join("");
+            const more = events.length > 8 ? `<div class="map-popup-meta">+${events.length - 8} más</div>` : "";
+            const placeMeta = [place.country_code, `${events.length} ${events.length === 1 ? "evento" : "eventos"}`].filter(Boolean).join(" · ");
+            return `
+        <div class="map-popup">
+          <div class="map-popup-head">
+            <b>${esc(place.name)}</b>
+            <span class="muted" style="font-size:12px">${esc(placeMeta)}</span>
+          </div>
+          ${shown}${more}
+        </div>`;
+        }
+
+        function buildMapData(events) {
+            const groups = new Map();
+            let located = 0;
+            for (const event of events) {
+                const place = primaryPlace(event);
+                if (!place) continue;
+                located++;
+                const group = groups.get(place.id) ?? { place, events: [] };
+                group.events.push(event);
+                groups.set(place.id, group);
+            }
+
+            const features = [...groups.values()].map(({ place, events: list }) => {
+                const sources = list.reduce((sum, e) => sum + e.source_count, 0);
+                return {
+                    type: "Feature",
+                    geometry: { type: "Point", coordinates: [place.lon, place.lat] },
+                    properties: {
+                        id: place.id,
+                        radius: 5 + Math.min(18, Math.sqrt(sources) * 2.5),
+                        active: list.some((e) => e.status === "active"),
+                    },
+                };
+            });
+
+            return { groups, features, located, total: events.length };
+        }
+
+        function computeBounds(mapboxgl, features) {
+            if (!features.length) return null;
+            const bounds = new mapboxgl.LngLatBounds();
+            for (const feature of features) bounds.extend(feature.geometry.coordinates);
+            return bounds;
+        }
+
+        async function fetchMapEvents() {
+            mapAbort?.abort();
+            mapAbort = new AbortController();
+            const query = new URLSearchParams({ hours: state.eventHours, limit: 200 });
+            if (state.eventStatus) query.set("status", state.eventStatus);
+            return api(`/events?${query}`, { signal: mapAbort.signal });
+        }
+
+        function addEventLayers(initialFeatures) {
+            map.addSource("events", {
+                type: "geojson",
+                data: { type: "FeatureCollection", features: initialFeatures },
+            });
+            const color = ["case", ["get", "active"], "#1ed760", "#939bb0"];
+            map.addLayer({
+                id: "events-circles",
+                type: "circle",
+                source: "events",
+                // Los círculos pequeños se dibujan encima de los grandes para que todos se puedan pulsar.
+                layout: { "circle-sort-key": ["-", ["get", "radius"]] },
+                paint: {
+                    "circle-radius": ["get", "radius"],
+                    "circle-color": color,
+                    "circle-opacity": 0.35,
+                    "circle-stroke-width": 2,
+                    "circle-stroke-color": color,
+                },
+            });
+
+            map.on("click", "events-circles", (event) => {
+                const feature = event.features?.[0];
+                const group = feature && mapGroups.get(Number(feature.properties.id));
+                if (!group) return;
+
+                // Con varias copias del mundo visibles, el popup debe salir en la copia pulsada.
+                const coordinates = feature.geometry.coordinates.slice();
+                while (Math.abs(event.lngLat.lng - coordinates[0]) > 180) {
+                    coordinates[0] += event.lngLat.lng > coordinates[0] ? 360 : -360;
+                }
+                mapPopup?.remove();
+                mapPopup = new window.mapboxgl.Popup({ maxWidth: "360px", offset: Number(feature.properties.radius) + 2 })
+                    .setLngLat(coordinates)
+                    .setHTML(popupHtml(group))
+                    .addTo(map);
+            });
+            map.on("mouseenter", "events-circles", () => { map.getCanvas().style.cursor = "pointer"; });
+            map.on("mouseleave", "events-circles", () => { map.getCanvas().style.cursor = ""; });
+        }
+
+        function createMap(mapboxgl, accessToken, { initialFeatures, bounds }) {
+            mapboxgl.accessToken = accessToken;
+            const mapOptions = {
+                container: mapEl,
+                style: MAP_STYLE,
+                projection: "mercator",
+            };
+            if (bounds) {
+                mapOptions.bounds = bounds;
+                mapOptions.fitBoundsOptions = { padding: 70, maxZoom: 5 };
+                mapFitted = true;
+            } else {
+                mapOptions.center = [20, 30];
+                mapOptions.zoom = 1.6;
+            }
+
+            map = new mapboxgl.Map(mapOptions);
+            map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+            mapLoaded = new Promise((resolve) => map.once("load", () => { addEventLayers(initialFeatures); resolve(); }));
+
+            // Token inválido, caducado o restringido por URL: se descarta el mapa para poder reintentar.
+            map.on("error", (event) => {
+                const status = event.error?.status;
+                if (status !== 401 && status !== 403) return;
+                map.remove();
+                map = undefined;
+                mapboxToken = undefined;
+                mapFitted = false;
+                const message = "Mapbox rechazó el token (¿caducado, sin permisos o restringido a otras URL?)";
+                $("#map-slot")?.replaceChildren(Object.assign(document.createElement("div"), { className: "banner", textContent: message }));
+                const count = $("#map-count");
+                if (count) count.textContent = "";
+                toast(message, true);
+            });
+        }
+
+        function updateMapCount(data) {
+            const count = $("#map-count");
+            if (count) count.textContent = `${data.located} de ${data.total} eventos con localización · ${data.groups.size} lugares`;
+        }
+
+        /** Pide los eventos con los filtros actuales y actualiza el mapa sin recrearlo. */
+        async function refreshMapData({ fit = false } = {}) {
+            try {
+                const events = await fetchMapEvents();
+                await mapLoaded;
+                if (!map) return;
+
+                const data = buildMapData(events);
+                mapGroups = data.groups;
+
+                mapPopup?.remove();
+                map.getSource("events").setData({ type: "FeatureCollection", features: data.features });
+
+                if (fit && data.features.length) {
+                    const bounds = computeBounds(window.mapboxgl, data.features);
+                    map.fitBounds(bounds, { padding: 70, maxZoom: 5, duration: 500 });
+                    mapFitted = true;
+                }
+
+                updateMapCount(data);
+            } catch (error) {
+                if (error.name !== "AbortError") toast(error.message, true);
+            }
+        }
+
         async function mapView() {
             return `
     <h2>Mapa</h2>
     ${eventFilterForm()}
-    <p class="muted" id="map-count">Cargando…</p>
-    <div id="map"></div>`;
+    <div class="map-meta">
+      <p class="muted" id="map-count">Cargando…</p>
+      <div class="map-legend">
+        <span><i class="map-dot active"></i> Activo</span>
+        <span><i class="map-dot inactive"></i> Enfriándose / caducado</span>
+      </div>
+    </div>
+    <div id="map-slot"></div>`;
         }
 
         async function mapHook() {
-            const box = $("#map");
+            const slot = $("#map-slot");
             try {
-                const L = await loadLeaflet();
-                const query = new URLSearchParams({ hours: state.eventHours, limit: 200 });
-                if (state.eventStatus) query.set("status", state.eventStatus);
-                const events = await api(`/events?${query}`);
-                if ($("#map") !== box) return; // el usuario ya cambió de vista
-
-                leafletMap?.remove();
-                leafletMap = L.map(box, { worldCopyJump: true }).setView([30, 20], 2);
-                L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-                    attribution: "&copy; OpenStreetMap &copy; CARTO", subdomains: "abcd", maxZoom: 12,
-                }).addTo(leafletMap);
-
-                // Un círculo por lugar, con todos los eventos que ocurren allí.
-                const groups = new Map();
-                let located = 0;
-                for (const event of events) {
-                    const place = primaryPlace(event);
-                    if (!place) continue;
-                    located++;
-                    const group = groups.get(place.id) ?? { place, events: [] };
-                    group.events.push(event);
-                    groups.set(place.id, group);
+                if (map) {
+                    slot.append(mapEl);
+                    requestAnimationFrame(() => map?.resize());
+                    await refreshMapData({ fit: !mapFitted });
+                    return;
                 }
 
-                for (const { place, events: list } of groups.values()) {
-                    const sources = list.reduce((sum, e) => sum + e.source_count, 0);
-                    const color = list.some((e) => e.status === "active") ? "#1ed760" : "#7d8599";
-                    const popup = `<b>${esc(place.name)}</b>${list.slice(0, 8).map((e) =>
-                        `<div>${statusChip(e.status)} ${esc(e.title)} <span class="muted">· ${e.source_count} medios</span></div>`).join("")}
-                        ${list.length > 8 ? `<div class="muted">+${list.length - 8} más</div>` : ""}`;
-                    L.circleMarker([place.lat, place.lon], {
-                        radius: 5 + Math.min(18, Math.sqrt(sources) * 2.5), color, fillColor: color, fillOpacity: 0.35, weight: 2,
-                    }).addTo(leafletMap).bindPopup(popup, { maxWidth: 360 });
-                }
-                $("#map-count").textContent = `${located} de ${events.length} eventos con localización · ${groups.size} lugares`;
+                // Se cargan librería, token y eventos en paralelo para iniciar en el encuadre final sin cancelar teselas.
+                const [mapboxgl, accessToken, events] = await Promise.all([
+                    loadMapbox(),
+                    getMapboxToken(),
+                    fetchMapEvents(),
+                ]);
+                if (!slot.isConnected) return; // el usuario ya cambió de vista
+                if (!accessToken) throw new Error("Falta MAPBOX_TOKEN en el .env del servidor (usa un token público, pk.…)");
+
+                const data = buildMapData(events);
+                mapGroups = data.groups;
+                const bounds = computeBounds(mapboxgl, data.features);
+
+                slot.append(mapEl);
+                createMap(mapboxgl, accessToken, { initialFeatures: data.features, bounds });
+                updateMapCount(data);
             } catch (error) {
-                toast(error.message, true);
+                if (error.name === "AbortError") return;
+                slot.replaceChildren(Object.assign(document.createElement("div"), { className: "banner", textContent: error.message }));
+                const count = $("#map-count");
+                if (count) count.textContent = "";
             }
         }
 
@@ -965,9 +1352,13 @@
         /** Código que necesita el DOM ya pintado. */
         const hooks = { map: mapHook };
 
-        async function render() {
+        function currentView() {
             const requested = location.hash.slice(1);
-            const name = requested in views ? requested : "overview";
+            return requested in views ? requested : "overview";
+        }
+
+        async function render() {
+            const name = currentView();
             document.querySelectorAll("nav a").forEach((link) => link.classList.toggle("active", link.dataset.view === name));
             try {
                 $("#view").innerHTML = await views[name]();
@@ -1024,7 +1415,7 @@
                 event.preventDefault();
                 state.entityId = Number(el.dataset.id);
                 if (location.hash === "#entities") await render();
-                else location.hash = "#entities"; // hashchange vuelve a pintar
+                else location.hash = "#entities";
             },
             async "close-entity"() { state.entityId = null; await render(); },
             async page(el) {
@@ -1088,7 +1479,9 @@
                 state.eventHours = Number(values.hours);
                 state.eventStatus = values.status ?? "";
                 if ("type" in values) state.eventType = values.type;
-                await render();
+                // En el mapa solo se actualizan los datos: recrear el mapa costaría otra carga facturable de Mapbox.
+                if (currentView() === "map" && map) await refreshMapData({ fit: true });
+                else await render();
             },
             async "entity-filters"(form) {
                 const values = formValues(form);
