@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Radar OSINT · Admin</title>
+    <style>
+        :root {
+            --bg: #0f1218;
+            --panel: #161b26;
+            --panel-2: #1e2433;
+            --line: #262d3d;
+            --text: #d7dbe6;
+            --muted: #7d8599;
+            --green: #1ed760;
+            --blue: #2962ff;
+            --red: #f23645;
+            --amber: #f5a524;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            display: flex;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font: 14px/1.5 Inter, system-ui, sans-serif;
+        }
+
+        aside {
+            width: 210px;
+            padding: 20px 12px;
+            background: #0b0e14;
+            border-right: 1px solid var(--line);
+            position: sticky;
+            top: 0;
+            height: 100vh;
+        }
+
+        aside h1 {
+            font-size: 15px;
+            margin: 0 8px 20px;
+            letter-spacing: .5px;
+        }
+
+        aside h1 span {
+            color: var(--green);
+        }
+
+        nav a {
+            display: block;
+            padding: 9px 12px;
+            border-radius: 8px;
+            color: var(--muted);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        nav a:hover {
+            color: var(--text);
+        }
+
+        nav a.active {
+            background: var(--panel-2);
+            color: var(--text);
+        }
+
+        main {
+            flex: 1;
+            padding: 24px 28px;
+            min-width: 0;
+        }
+
+        h2 {
+            margin: 0 0 16px;
+            font-size: 20px;
+        }
+
+        h3 {
+            margin: 0 0 12px;
+            font-size: 12px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: .8px;
+        }
+
+        a {
+            color: var(--text);
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .up {
+            color: var(--green);
+        }
+
+        .down {
+            color: var(--red);
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .kpis {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .kpi {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 14px 16px;
+        }
+
+        .kpi b {
+            display: block;
+            font-size: 26px;
+        }
+
+        .kpi span {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .banner {
+            background: #3a2c0a;
+            border: 1px solid var(--amber);
+            color: var(--amber);
+            border-radius: 10px;
+            padding: 10px 14px;
+            margin-bottom: 16px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 600;
+            padding: 6px 8px;
+        }
+
+        td {
+            padding: 8px;
+            border-top: 1px solid var(--line);
+            vertical-align: top;
+        }
+
+        input,
+        select,
+        textarea {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font: inherit;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: 1px solid var(--blue);
+        }
+
+        textarea {
+            width: 100%;
+            margin: 8px 0;
+            resize: vertical;
+        }
+
+        label {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        label.check {
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+            color: var(--text);
+            font-size: 14px;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 14px;
+            align-items: end;
+        }
+
+        .btn {
+            background: var(--panel-2);
+            color: var(--text);
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 7px 16px;
+            font: inherit;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            border-color: var(--muted);
+        }
+
+        .btn.primary {
+            background: var(--green);
+            color: #000;
+            border-color: var(--green);
+        }
+
+        .btn.danger {
+            color: var(--red);
+        }
+
+        .chip {
+            display: inline-block;
+            padding: 1px 9px;
+            border-radius: 999px;
+            background: var(--panel-2);
+            font-size: 12px;
+            margin: 0 4px 2px 0;
+        }
+
+        .chip.alert {
+            background: #3b1219;
+            color: var(--red);
+        }
+
+        .detail {
+            margin-top: 6px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .detail div {
+            padding: 2px 0;
+        }
+
+        .error {
+            color: var(--red);
+            font-size: 12px;
+            max-width: 260px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .bars {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+            height: 130px;
+        }
+
+        .bar {
+            flex: 1;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .bar i {
+            display: block;
+            width: 100%;
+            background: var(--blue);
+            border-radius: 4px 4px 0 0;
+            min-height: 2px;
+        }
+
+        .bar span {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .spark {
+            display: inline-flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 22px;
+        }
+
+        .spark i {
+            display: block;
+            width: 6px;
+            background: var(--green);
+            opacity: .8;
+        }
+
+        .digest h3 {
+            color: var(--text);
+            text-transform: none;
+            font-size: 16px;
+            margin-top: 18px;
+        }
+
+        .digest li {
+            margin-left: 18px;
+        }
+
+        #toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--panel-2);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 10px 16px;
+            display: none;
+            max-width: 420px;
+        }
+
+        #toast.error {
+            border-color: var(--red);
+            color: var(--red);
+        }
+    </style>
+</head>
+
+<body>
+    <aside>
+        <h1>RADAR <span>OSINT</span></h1>
+        <nav>
+            <a href="#overview" data-view="overview">Resumen</a>
+            <a href="#events" data-view="events">Eventos</a>
+            <a href="#articles" data-view="articles">Artículos</a>
+            <a href="#categories" data-view="categories">Categorías</a>
+            <a href="#sources" data-view="sources">Fuentes</a>
+            <a href="#digest" data-view="digest">Briefing</a>
+            <a href="#settings" data-view="settings">Ajustes</a>
+        </nav>
+    </aside>
+    <main>
+        <div id="view"></div>
+    </main>
+    <div id="toast"></div>
+
+    <script>
+        // ---------- Utilidades ----------
+        const $ = (selector) => document.querySelector(selector);
+        const esc = (value) =>
+            String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+        const safeHref = (url) => (/^https?:\/\//i.test(url) ? esc(url) : "#");
+        const formatTime = (ts) => (ts ? new Date(ts).toLocaleString("es-ES", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
+        const timeAgo = (ts) => {
+            if (!ts) return "nunca";
+            const minutes = Math.round((Date.now() - ts) / 60000);
+            if (minutes < 1) return "ahora";
+            if (minutes < 60) return `hace ${minutes} min`;
+            const hours = Math.round(minutes / 60);
+            return hours < 48 ? `hace ${hours} h` : `hace ${Math.round(hours / 24)} d`;
+        };
+        const chips = (names) => names.map((name) => `<span class="chip">${esc(name)}</span>`).join("");
+
+        function markdown(text) {
+            const bold = (line) => line.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+            return esc(text).split("\n").map((line) => {
+                const heading = line.match(/^#{1,4}\s+(.*)/);
+                if (heading) return `<h3>${bold(heading[1])}</h3>`;
+                if (/^[-*]\s/.test(line)) return `<li>${bold(line.slice(2))}</li>`;
+                return line.trim() ? `<p>${bold(line)}</p>` : "";
+            }).join("");
+        }
+
+        function toast(message, isError = false) {
+            const box = $("#toast");
+            box.textContent = message;
+            box.className = isError ? "error" : "";
+            box.style.display = "block";
+            setTimeout(() => (box.style.display = "none"), 4000);
+        }
+
+        // ---------- API ----------
+        let token = localStorage.getItem("adminToken") ?? "";
+
+        async function api(path, { method = "GET", body } = {}) {
+            const headers = { "content-type": "application/json" };
+            if (token) headers.authorization = `Bearer ${token}`;
+
+            const response = await fetch(`/api${path}`, {
+                method,
+                headers,
+                body: body === undefined ? undefined : JSON.stringify(body),
+            });
+
+            if (response.status === 401) {
+                const input = prompt("Token de administrador (ADMIN_TOKEN):");
+                if (input === null) throw new Error("Token requerido");
+                token = input.trim();
+                localStorage.setItem("adminToken", token);
+                return api(path, { method, body });
+            }
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.error ?? `HTTP ${response.status}`);
+            }
+            return response.json();
+        }
+
+        // ---------- Estado de la interfaz ----------
+        const state = {
+            eventHours: 24,
+            articles: { q: "", category: "", source: "", offset: 0 },
+        };
+        const ARTICLES_PER_PAGE = 50;
+        const HOUR_LABELS = { 24: "24 h", 48: "48 h", 168: "7 días" };
+
+        // ---------- Vistas ----------
+        const kpi = (label, value, extraClass = "") => `<div class="kpi"><b class="${extraClass}">${value}</b><span>${label}</span></div>`;
+
+        async function overviewView() {
+            const [overview, trends, runs] = await Promise.all([api("/overview"), api("/trends"), api("/runs")]);
+            const volume = [...overview.dailyVolume].reverse();
+            const maxVolume = Math.max(1, ...volume);
+
+            return `
+    <h2>Resumen</h2>
+    ${overview.geminiConfigured ? "" : `<div class="banner">Falta <b>GEMINI_API_KEY</b>: se descargan artículos, pero no se clasifican.</div>`}
+    <div class="toolbar">
+      <button class="btn primary" data-action="run-pipeline">Ejecutar ciclo ahora</button>
+      <button class="btn" data-action="reclassify">Reclasificar</button>
+      <button class="btn danger" data-action="reembed">Reindexar todo</button>
+    </div>
+    <div class="kpis">
+      ${kpi("Artículos (24 h)", overview.articles24h)}
+      ${kpi("Eventos (24 h)", overview.events24h)}
+      ${kpi("Sin categoría (24 h)", overview.unclassified24h, overview.unclassified24h > overview.articles24h / 2 ? "down" : "")}
+      ${kpi("Pendientes de procesar", overview.pending)}
+      ${kpi("Fuentes activas", overview.sourcesEnabled)}
+      ${kpi("Fuentes con error", overview.sourcesFailing, overview.sourcesFailing ? "down" : "up")}
+      ${kpi("Artículos totales", overview.articlesTotal)}
+    </div>
+
+    <div class="card">
+      <h3>Volumen diario (más antiguo → últimas 24 h)</h3>
+      <div class="bars">${volume.map((n) => `<div class="bar"><span>${n}</span><i style="height:${(n / maxVolume) * 85}%"></i></div>`).join("")}</div>
+    </div>
+
+    <div class="card">
+      <h3>Tendencia por categoría</h3>
+      <table>
+        <thead><tr><th>Categoría</th><th>24 h</th><th>Media previa</th><th>z</th><th>7 días</th><th></th></tr></thead>
+        <tbody>${trends.map(trendRow).join("")}</tbody>
+      </table>
+      <p class="muted">Anomalía = z ≥ 2 con al menos 6 artículos. Necesita ≥ 2 días de histórico. Si "Sin categoría" es alto, baja los umbrales en Categorías y pulsa Reclasificar.</p>
+    </div>
+
+    <div class="card">
+      <h3>Últimos ciclos</h3>
+      <table>
+        <thead><tr><th>Inicio</th><th>Estado</th><th>Duración</th><th>Detalle</th></tr></thead>
+        <tbody>${runs.slice(0, 10).map((run) => `
+          <tr><td>${formatTime(run.started_at)}</td>
+              <td class="${run.ok ? "up" : "down"}">${run.ok ? "OK" : "Error"}</td>
+              <td>${(run.duration_ms / 1000).toFixed(1)} s</td>
+              <td class="muted">${esc(run.details)}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">Sin ciclos todavía</td></tr>`}
+        </tbody>
+      </table>
+    </div>`;
+        }
+
+        function trendRow(trend) {
+            const maxDaily = Math.max(1, ...trend.daily);
+            const spark = [...trend.daily].reverse().map((n) => `<i style="height:${Math.max(8, (n / maxDaily) * 100)}%"></i>`).join("");
+            return `<tr>
+    <td>${esc(trend.name)}</td>
+    <td>${trend.today}</td>
+    <td>${trend.baseline === null ? "—" : trend.baseline.toFixed(1)}</td>
+    <td>${trend.zScore === null ? "—" : trend.zScore.toFixed(1)}</td>
+    <td><span class="spark">${spark}</span></td>
+    <td>${trend.anomaly ? `<span class="chip alert">Anomalía</span>` : ""}</td>
+  </tr>`;
+        }
+
+        async function eventsView() {
+            const events = await api(`/events?hours=${state.eventHours}&limit=60`);
+            const buttons = Object.entries(HOUR_LABELS).map(([hours, label]) =>
+                `<button class="btn ${Number(hours) === state.eventHours ? "primary" : ""}" data-action="set-event-hours" data-hours="${hours}">${label}</button>`).join("");
+
+            return `
+    <h2>Eventos</h2>
+    <div class="toolbar">${buttons}</div>
+    <div class="card"><table>
+      <thead><tr><th>Evento</th><th>Medios</th><th>Artículos</th><th>Categorías</th><th>Último</th></tr></thead>
+      <tbody>${events.map((event) => `
+        <tr>
+          <td><a href="#" data-action="toggle-event" data-id="${event.id}">${esc(event.title)}</a>
+              <div class="detail" id="event-${event.id}"></div></td>
+          <td>${event.source_count}</td><td>${event.article_count}</td>
+          <td>${chips(event.categories)}</td>
+          <td class="muted">${timeAgo(event.last_seen_at)}</td>
+        </tr>`).join("") || `<tr><td colspan="5" class="muted">Sin eventos en este periodo</td></tr>`}
+      </tbody>
+    </table></div>`;
+        }
+
+        async function articlesView() {
+            const filters = state.articles;
+            const query = new URLSearchParams({ limit: ARTICLES_PER_PAGE, offset: filters.offset, q: filters.q, category: filters.category, source: filters.source });
+            const [articles, categories, sources] = await Promise.all([api(`/articles?${query}`), api("/categories"), api("/sources")]);
+            const options = (items, selected) => items.map((item) => `<option value="${item.id}" ${String(item.id) === String(selected) ? "selected" : ""}>${esc(item.name)}</option>`).join("");
+
+            return `
+    <h2>Artículos</h2>
+    <form class="toolbar" data-form="article-filters">
+      <input name="q" placeholder="Buscar en títulos" value="${esc(filters.q)}">
+      <select name="category"><option value="">Todas las categorías</option>${options(categories, filters.category)}</select>
+      <select name="source"><option value="">Todas las fuentes</option>${options(sources, filters.source)}</select>
+      <button class="btn primary">Filtrar</button>
+    </form>
+    <div class="card"><table>
+      <thead><tr><th>Fecha</th><th>Fuente</th><th>Título</th><th>Categorías (similitud)</th></tr></thead>
+      <tbody>${articles.map((article) => `
+        <tr>
+          <td class="muted">${formatTime(article.published_at)}</td>
+          <td>${esc(article.source)}</td>
+          <td><a href="${safeHref(article.url)}" target="_blank" rel="noopener">${esc(article.title)}</a></td>
+          <td>${article.status === "pending" ? `<span class="muted">pendiente</span>` : chips(article.categories.map((c) => `${c.name} ${c.score.toFixed(2)}`)) || `<span class="muted">—</span>`}</td>
+        </tr>`).join("") || `<tr><td colspan="4" class="muted">Sin resultados</td></tr>`}
+      </tbody>
+    </table></div>
+    <div class="toolbar">
+      <button class="btn" data-action="page" data-step="-1" ${filters.offset === 0 ? "disabled" : ""}>← Anterior</button>
+      <button class="btn" data-action="page" data-step="1" ${articles.length < ARTICLES_PER_PAGE ? "disabled" : ""}>Siguiente →</button>
+    </div>`;
+        }
+
+        const categoryForm = (category = {}) => `
+  <form class="card" data-form="category" data-id="${category.id ?? ""}">
+    <div class="row">
+      <label>Nombre<input name="name" value="${esc(category.name)}" required></label>
+      <label>Umbral de similitud<input name="threshold" type="number" step="0.01" min="0.3" max="0.95" value="${category.threshold ?? 0.6}"></label>
+      <label class="check"><input name="enabled" type="checkbox" ${(category.enabled ?? 1) ? "checked" : ""}> Activa</label>
+    </div>
+    <textarea name="description" rows="2" placeholder="Describe la categoría con una o dos frases" required>${esc(category.description)}</textarea>
+    <textarea name="examples" rows="3" placeholder="Titulares de ejemplo, uno por línea (opcional, cualquier idioma)">${esc(category.examples)}</textarea>
+    <div class="row">
+      <button class="btn primary">${category.id ? "Guardar" : "Crear categoría"}</button>
+      ${category.id ? `<button type="button" class="btn danger" data-action="delete-category" data-id="${category.id}">Eliminar</button>` : ""}
+    </div>
+  </form>`;
+
+        async function categoriesView() {
+            const categories = await api("/categories");
+            return `
+    <h2>Categorías</h2>
+    <p class="muted">Una categoría es una descripción en lenguaje natural. Tras editar umbrales o textos, pulsa <b>Reclasificar</b> en Resumen para aplicarlo a lo ya descargado.</p>
+    <h3>Nueva</h3>${categoryForm()}
+    <h3>Existentes</h3>${categories.map(categoryForm).join("")}`;
+        }
+
+        async function sourcesView() {
+            const sources = await api("/sources");
+            return `
+    <h2>Fuentes</h2>
+    <form class="card form-grid" data-form="source">
+      <label>Nombre<input name="name" required></label>
+      <label>Tipo<select name="type"><option value="rss">RSS / Atom</option><option value="gdelt">GDELT (consulta)</option></select></label>
+      <label>URL o consulta GDELT<input name="url" required></label>
+      <label>Cada (min)<input name="interval_minutes" type="number" min="5" value="30"></label>
+      <button class="btn primary">Añadir fuente</button>
+    </form>
+    <div class="card"><table>
+      <thead><tr><th>On</th><th>Fuente</th><th>Tipo</th><th>Cada</th><th>Última descarga</th><th>Artículos</th><th>Error</th><th></th></tr></thead>
+      <tbody>${sources.map((source) => `
+        <tr>
+          <td><input type="checkbox" data-action="toggle-source" data-id="${source.id}" ${source.enabled ? "checked" : ""}></td>
+          <td title="${esc(source.url)}">${esc(source.name)}</td>
+          <td class="muted">${source.type}</td>
+          <td>${source.interval_minutes} min</td>
+          <td class="muted">${timeAgo(source.last_fetched_at)}</td>
+          <td>${source.articles_total}</td>
+          <td class="error" title="${esc(source.last_error)}">${esc(source.last_error)}</td>
+          <td><button class="btn" data-action="fetch-source" data-id="${source.id}">Descargar</button>
+              <button class="btn danger" data-action="delete-source" data-id="${source.id}">×</button></td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div>`;
+        }
+
+        const SETTING_LABELS = {
+            eventSimilarity: "Similitud mínima para agrupar en un evento (0.5 – 0.99)",
+            eventWindowHours: "Ventana de agrupación de eventos (horas)",
+            maxArticleAgeHours: "Antigüedad máxima de artículos al descargar (horas)",
+            retentionDays: "Retención de datos (días)",
+            schedulerEnabled: "Planificador automático activado",
+        };
+
+        async function settingsView() {
+            const settings = await api("/settings");
+            const fields = Object.entries(SETTING_LABELS).map(([key, label]) =>
+                key === "schedulerEnabled"
+                    ? `<label class="check"><input type="checkbox" name="${key}" ${settings[key] ? "checked" : ""}> ${label}</label>`
+                    : `<label>${label}<input type="number" step="any" name="${key}" value="${settings[key]}"></label>`).join("");
+
+            return `<h2>Ajustes</h2><form class="card form-grid" data-form="settings">${fields}<button class="btn primary">Guardar</button></form>`;
+        }
+
+        async function digestView() {
+            const digest = await api("/digest");
+            return `
+    <h2>Briefing</h2>
+    <div class="toolbar"><button class="btn primary" data-action="generate-digest">Generar briefing de las últimas 24 h</button></div>
+    <div class="card digest">
+      ${digest ? `<p class="muted">Generado ${formatTime(digest.created_at)}</p>${markdown(digest.content)}` : `<p class="muted">Todavía no hay ningún briefing.</p>`}
+    </div>`;
+        }
+
+        // ---------- Router ----------
+        const views = { overview: overviewView, events: eventsView, articles: articlesView, categories: categoriesView, sources: sourcesView, digest: digestView, settings: settingsView };
+
+        async function render() {
+            const requested = location.hash.slice(1);
+            const name = requested in views ? requested : "overview";
+            document.querySelectorAll("nav a").forEach((link) => link.classList.toggle("active", link.dataset.view === name));
+            try {
+                $("#view").innerHTML = await views[name]();
+            } catch (error) {
+                $("#view").innerHTML = `<div class="banner">${esc(error.message)}</div>`;
+            }
+        }
+
+        // ---------- Acciones y formularios ----------
+        const actions = {
+            async "run-pipeline"() {
+                toast("Ejecutando ciclo…");
+                const result = await api("/pipeline/run", { method: "POST" });
+                toast(result.skipped ? "Ya hay un ciclo en marcha" : `Ciclo completado: ${result.ingest.articlesAdded} artículos nuevos, ${result.processing.processed} procesados`);
+                await render();
+            },
+            async reclassify() {
+                const { reclassified } = await api("/pipeline/reclassify", { method: "POST" });
+                toast(`${reclassified} artículos reclasificados`);
+                await render();
+            },
+            async reembed() {
+                if (!confirm("Se recalcularán embeddings, eventos y categorías de todos los artículos. ¿Continuar?")) return;
+                await api("/pipeline/reembed", { method: "POST" });
+                toast("Reindexación programada: se procesará en los próximos ciclos");
+                await render();
+            },
+            async "set-event-hours"(el) { state.eventHours = Number(el.dataset.hours); await render(); },
+            async "toggle-event"(el, event) {
+                event.preventDefault();
+                const box = $(`#event-${el.dataset.id}`);
+                if (box.innerHTML) { box.innerHTML = ""; return; }
+                const { articles } = await api(`/events/${el.dataset.id}`);
+                box.innerHTML = articles.map((a) => `<div><a href="${safeHref(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a> · ${esc(a.source)}</div>`).join("");
+            },
+            async page(el) {
+                state.articles.offset = Math.max(0, state.articles.offset + Number(el.dataset.step) * ARTICLES_PER_PAGE);
+                await render();
+            },
+            async "delete-category"(el) {
+                if (!confirm("¿Eliminar la categoría?")) return;
+                await api(`/categories/${el.dataset.id}`, { method: "DELETE" });
+                await render();
+            },
+            async "toggle-source"(el) { await api(`/sources/${el.dataset.id}`, { method: "PATCH", body: { enabled: el.checked } }); },
+            async "fetch-source"(el) {
+                const { added } = await api(`/sources/${el.dataset.id}/fetch`, { method: "POST" });
+                toast(`${added} artículos nuevos`);
+                await render();
+            },
+            async "delete-source"(el) {
+                if (!confirm("¿Eliminar la fuente y sus artículos?")) return;
+                await api(`/sources/${el.dataset.id}`, { method: "DELETE" });
+                await render();
+            },
+            async "generate-digest"() {
+                toast("Generando briefing…");
+                await api("/digest", { method: "POST" });
+                await render();
+            },
+        };
+
+        /** Convierte un formulario en objeto: números como number, checkboxes como boolean. */
+        function formValues(form) {
+            const values = {};
+            for (const input of form.querySelectorAll("[name]")) {
+                values[input.name] = input.type === "checkbox" ? input.checked : input.type === "number" ? Number(input.value) : input.value;
+            }
+            return values;
+        }
+
+        const forms = {
+            async category(form) {
+                const id = form.dataset.id;
+                await api(id ? `/categories/${id}` : "/categories", { method: id ? "PATCH" : "POST", body: formValues(form) });
+                toast("Categoría guardada");
+                await render();
+            },
+            async source(form) {
+                await api("/sources", { method: "POST", body: formValues(form) });
+                toast("Fuente añadida");
+                await render();
+            },
+            async settings(form) {
+                await api("/settings", { method: "PUT", body: formValues(form) });
+                toast("Ajustes guardados");
+            },
+            async "article-filters"(form) {
+                state.articles = { ...formValues(form), offset: 0 };
+                await render();
+            },
+        };
+
+        async function run(task) {
+            try { await task(); } catch (error) { toast(error.message, true); }
+        }
+
+        document.addEventListener("click", (event) => {
+            const element = event.target.closest("[data-action]");
+            if (element) run(() => actions[element.dataset.action](element, event));
+        });
+        document.addEventListener("submit", (event) => {
+            const form = event.target.closest("[data-form]");
+            if (!form) return;
+            event.preventDefault();
+            run(() => forms[form.dataset.form](form));
+        });
+        window.addEventListener("hashchange", render);
+        render();
+    </script>
+</body>
+
+</html>

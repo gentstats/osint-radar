@@ -1,12 +1,18 @@
 {
   "name": "osint-radar",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "bun run --hot src/index.ts"
+  "dev": "bun --watch src/index.ts",
+  "start": "bun src/index.ts",
+  "dump": "bun scripts/dump.ts"
   },
   "dependencies": {
-    "hono": "^4.13.16"
+    "fast-xml-parser": "^5.12.1",
+    "hono": "^4.13.18",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "^1.4.4"
   }
 }
