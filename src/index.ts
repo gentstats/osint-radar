@@ -12,14 +12,18 @@ import {
 } from "./categories";
 import { env } from "./config";
 import { generateDigest, getLatestDigest } from "./digest";
+import { enrichEvents } from "./enrich";
 import { ingestSource } from "./ingest";
 import { reclassifyStoredArticles, resetForReembedding, runPipeline } from "./pipeline";
 import {
   getCategoryTrends,
-  getEventArticles,
+  getEntityDetail,
+  getEventDetail,
   getOverview,
   getTopEvents,
   listArticles,
+  listEntities,
+  listEventTypes,
 } from "./queries";
 import { listRuns } from "./runs";
 import { categoryPatchSchema, categorySchema, settingsSchema, sourcePatchSchema, sourceSchema } from "./schemas";
@@ -27,9 +31,11 @@ import { seedDefaults } from "./seed";
 import { startScheduler } from "./scheduler";
 import { getSettings, updateSettings } from "./settings";
 import { createSource, deleteSource, getSource, listSources, updateSource } from "./sources";
-import { errorMessage } from "./utils"
+import type { EntityKind, EventStatus } from "./types";
+import { errorMessage } from "./utils";
 
 const DASHBOARD_PATH = join(import.meta.dir, "..", "dashboard.html");
+const EVENT_STATUSES: readonly string[] = ["active", "cooling", "expired"];
 
 // ---------- Helpers ----------
 
@@ -59,10 +65,38 @@ else console.warn("⚠️  ADMIN_TOKEN vacío: la API no tiene autenticación");
 api.get("/overview", (c) => c.json(getOverview()));
 api.get("/trends", (c) => c.json(getCategoryTrends()));
 api.get("/runs", (c) => c.json(listRuns()));
-api.get("/events", (c) =>
-  c.json(getTopEvents(numberQuery(c, "hours", 24, 720), numberQuery(c, "limit", 50, 200))),
-);
-api.get("/events/:id", (c) => c.json({ articles: getEventArticles(idParam(c)) }));
+
+// Eventos
+api.get("/events", (c) => {
+  const status = c.req.query("status");
+  return c.json(
+    getTopEvents({
+      hours: numberQuery(c, "hours", 24, 8760),
+      limit: numberQuery(c, "limit", 50, 200),
+      status: status && EVENT_STATUSES.includes(status) ? (status as EventStatus) : undefined,
+      entityId: Number(c.req.query("entity")) || undefined,
+      eventType: c.req.query("type") || undefined,
+    }),
+  );
+});
+api.get("/events/:id", (c) => c.json(getEventDetail(idParam(c)) ?? notFound("Evento")));
+api.get("/event-types", (c) => c.json(listEventTypes()));
+
+// Entidades
+api.get("/entities", (c) => {
+  const kind = c.req.query("kind");
+  return c.json(
+    listEntities({
+      kind: kind === "actor" || kind === "location" ? (kind as EntityKind) : undefined,
+      hours: numberQuery(c, "hours", 168, 8760),
+      limit: numberQuery(c, "limit", 100, 300),
+      search: c.req.query("q")?.trim() || undefined,
+    }),
+  );
+});
+api.get("/entities/:id", (c) => c.json(getEntityDetail(idParam(c)) ?? notFound("Entidad")));
+
+// Artículos
 api.get("/articles", (c) =>
   c.json(
     listArticles({
@@ -110,6 +144,7 @@ api.put("/settings", async (c) => c.json(updateSettings(settingsSchema.parse(awa
 
 // Pipeline
 api.post("/pipeline/run", async (c) => c.json(await runPipeline({ force: true })));
+api.post("/pipeline/enrich", async (c) => c.json(await enrichEvents()));
 api.post("/pipeline/reclassify", async (c) => c.json(await reclassifyStoredArticles()));
 api.post("/pipeline/reembed", (c) => {
   resetForReembedding();
@@ -146,4 +181,4 @@ app.onError((error, c) => {
 seedDefaults();
 startScheduler();
 
-export default { port: env.port, fetch: app.fetch, idleTimeout: 255 }; 
+export default { port: env.port, fetch: app.fetch, idleTimeout: 255 };

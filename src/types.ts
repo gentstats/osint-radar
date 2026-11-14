@@ -25,3 +25,22 @@ export interface RawArticle {
     summary: string;
     publishedAt: number;
 }
+
+export type EntityKind = "actor" | "location";
+
+/** Se calcula al consultar, nunca se guarda: así no queda obsoleto. */
+export type EventStatus = "active" | "cooling" | "expired";
+
+export interface Entity {
+    id: number;
+    kind: EntityKind;
+    subtype: string | null;
+    name: string;
+    country_code: string | null;
+    lat: number | null;
+    lon: number | null;
+    /** 'geocoder' = coordenadas fiables; 'llm' = aproximación del modelo. */
+    geo_source: "geocoder" | "llm" | null;
+    first_seen_at: number;
+    last_seen_at: number;
+}

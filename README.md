@@ -1,18 +1,20 @@
 # Radar OSINT
 
-Servidor que recopila noticias de fuentes abiertas (RSS y GDELT), las **clasifica por significado con embeddings** y las **agrupa en eventos**, con un dashboard de administración incluido.
+Servidor que recopila noticias de fuentes abiertas (RSS y GDELT), las **clasifica por significado con embeddings**, las **agrupa en eventos** y **extrae de cada evento sus actores, lugares y coordenadas** con un LLM. Incluye un dashboard de administración con mapa.
 
-Las categorías se definen en lenguaje natural desde el dashboard. Para pasar de inteligencia militar a ciencia o tecnología basta con crear categorías y fuentes nuevas, sin tocar código.
+Las categorías se definen en lenguaje natural desde el dashboard. Para pasar de inteligencia militar a ciencia o tecnología basta con crear categorías y fuentes nuevas, sin tocar código. Los actores, lugares, tipos de evento y roles no están hardcodeados: aparecen solos a medida que entran noticias.
 
 ## Características
 
 - **Ingesta** de feeds RSS/Atom y consultas GDELT, con intervalo configurable por fuente.
 - **Clasificación semántica**: cada categoría es una descripción más titulares de ejemplo; los artículos se asignan por similitud coseno. Funciona entre idiomas.
-- **Eventos**: los artículos que cuentan lo mismo se agrupan por similitud con el centroide del evento.
+- **Eventos**: los artículos que cuentan lo mismo se agrupan por similitud con el centroide del evento. Cada evento conoce cuándo salió su primera noticia y cuál es su **estado** (`activo`, `enfriándose`, `caducado`), calculado al consultar.
+- **Enriquecimiento**: un LLM extrae por evento un título limpio, un resumen, un tipo, los **actores** (con rol) y los **lugares** implicados.
+- **Entidades autogeneradas**: actores y lugares se fusionan entre menciones (alias + embeddings) y los lugares se geocodifican una sola vez.
+- **Mapa** de eventos por localización.
 - **Tendencias y anomalías** por categoría (z-score frente a la media de los días previos).
 - **Briefing diario** redactado por un LLM a partir de los eventos de las últimas 24 h.
-- **Dashboard** para gestionar fuentes, categorías, ajustes y ver métricas.
-- **Persistencia** en un único archivo SQLite (`bun:sqlite`), sin servicios externos salvo la API de Gemini.
+- **Persistencia** en un único archivo SQLite (`bun:sqlite`), sin servicios externos salvo Gemini y los geocodificadores.
 
 ## Requisitos
 
@@ -31,6 +33,8 @@ Abre http://localhost:3000/dashboard. La primera vez pedirá el `ADMIN_TOKEN`.
 
 Al arrancar por primera vez se crean fuentes y categorías de ejemplo. En unos minutos el planificador descarga artículos; también puedes pulsar **Ejecutar ciclo ahora** en el Resumen.
 
+Las bases de datos anteriores se migran solas al arrancar (se añaden las columnas y tablas nuevas).
+
 ## Variables de entorno
 
 | Variable | Por defecto | Descripción |
@@ -38,9 +42,10 @@ Al arrancar por primera vez se crean fuentes y categorías de ejemplo. En unos m
 | `PORT` | `3000` | Puerto del servidor |
 | `DATABASE_PATH` | `data/radar.sqlite` | Ruta del archivo SQLite |
 | `ADMIN_TOKEN` | *(vacío)* | Protege la API. Solo letras, números y `._~+/-`. Vacío = API abierta |
-| `GEMINI_API_KEY` | *(vacío)* | Sin ella se descargan artículos pero no se clasifican |
+| `GEMINI_API_KEY` | *(vacío)* | Sin ella se descargan artículos pero no se clasifican ni enriquecen |
 | `EMBEDDING_MODEL` | `gemini-embedding-001` | Modelo de embeddings |
 | `DIGEST_MODEL` | `gemini-2.5-flash` | Modelo del briefing |
+| `EXTRACTION_MODEL` | `gemini-2.5-flash` | Modelo que extrae actores, lugares y resúmenes |
 
 ## Cómo funciona
 
@@ -58,35 +63,84 @@ Al arrancar por primera vez se crean fuentes y categorías de ejemplo. En unos m
  │ cada categoría│ activos               │
  └──────────────┴────────────────────────┘
         ▼
- articles (status = processed) → tendencias, eventos, briefing
+ events ──► Enriquecer (1 llamada al LLM por ~8 eventos)
+              resumen · tipo · actores · lugares
+        ▼
+ Resolver entidades: alias exacto → similitud de embeddings → entidad nueva
+        ▼
+ Geocodificar lugares nuevos (Open-Meteo → Nominatim → coordenadas del LLM)
+        ▼
+ tendencias, eventos, entidades, mapa, briefing
 ```
 
 - **Prototipos**: cada categoría tiene un vector por su descripción y uno por cada titular de ejemplo. Un artículo puntúa en una categoría con su prototipo más parecido, y se conserva si supera el umbral de esa categoría (máximo 3 categorías por artículo).
 - **Embeddings guardados**: se almacenan junto al artículo, así que cambiar umbrales o categorías y pulsar **Reclasificar** no vuelve a llamar a la API.
-- **Retención**: los datos más antiguos que `retentionDays` se eliminan en cada ciclo.
+- **Retención**: los artículos y eventos más antiguos que `retentionDays` se eliminan en cada ciclo. Las entidades sobreviven más (`entityRetentionDays`) y solo se borran si no tienen ningún evento.
+
+### Estado de un evento
+
+No se guarda: se deriva de la hora de la última noticia.
+
+| Estado | Condición |
+|---|---|
+| `active` | El silencio es normal para el ritmo del evento: menos de `max(eventActiveMinHours, 3 × intervalo medio entre artículos)`, sin pasar de la ventana |
+| `cooling` | Ha superado ese silencio, pero aún está dentro de `eventWindowHours` y podría reactivarse |
+| `expired` | Lleva sin noticias más que `eventWindowHours`: ya no recibe artículos |
+
+`first_seen_at` es la hora de publicación de la noticia más antigua del evento.
+
+### Enriquecimiento de eventos
+
+- **Qué eventos entran**: los que tienen al menos `enrichMinSources` medios y nunca se han extraído, o cuyo número de artículos se ha duplicado desde la última extracción. Se procesan como máximo `enrichMaxEventsPerRun` por ciclo.
+- **Qué recibe el LLM**: los titulares y resúmenes de hasta 8 artículos por evento, más el vocabulario ya generado (tipos de evento y roles) para que lo reutilice.
+- **Qué devuelve**: salida estructurada (JSON validado con zod) con título, resumen, tipo, actores con rol y lugares con rol (`occurred` o `involved`).
+- **Si falla** (cuota, JSON roto, red) los eventos quedan sin procesar y se reintentan en el siguiente ciclo.
+
+### Entidades
+
+Una sola tabla `entities` con `kind` (`actor`, `location`) y `subtype` en texto libre, más `entity_aliases` y `event_entities` (con `role` y `weight`).
+
+Para cada mención:
+
+1. Se normaliza el nombre (minúsculas, sin acentos) y se busca en los alias.
+2. Si no existe, se compara su embedding con las entidades del mismo tipo (`entityMergeSimilarity`). En lugares, además, el país no puede contradecirse (Georgia, país, no se fusiona con Georgia, estado).
+3. Si tampoco hay parecido, se crea una entidad nueva.
+
+El 0,90 de `entityMergeSimilarity` es un punto de partida, no un valor calibrado: si ves actores distintos fusionados, súbelo; si ves duplicados, bájalo.
+
+### Coordenadas
+
+El LLM aporta el **nombre** del lugar, no la coordenada. Cada lugar nuevo se geocodifica una sola vez:
+
+1. **Open-Meteo** (sin clave): países, regiones y ciudades.
+2. **Nominatim / OpenStreetMap** (máx. 1 petición por segundo): mares, estrechos e instalaciones.
+3. Si ninguno lo conoce, se conservan las coordenadas aproximadas que dio el LLM (`geo_source = 'llm'`, marcadas con `≈` en el dashboard).
 
 ## Estructura
 
 ```
 osint-radar/
-├── dashboard.html        Panel de administración (HTML + JS sin dependencias)
+├── dashboard.html        Panel de administración (HTML + JS; Leaflet se carga solo en la vista Mapa)
 ├── scripts/
 │   └── dump.ts           Vuelca el código del proyecto en un solo .md
 └── src/
     ├── index.ts          Servidor Hono: solo rutas y manejo de errores
     ├── config.ts         Entorno, constantes y ajustes por defecto
-    ├── db.ts             bun:sqlite y esquema
+    ├── db.ts             bun:sqlite, esquema y migraciones ligeras
     ├── schemas.ts        Validación de entradas (zod)
     ├── types.ts          Tipos compartidos
-    ├── utils.ts          Utilidades generales
+    ├── utils.ts          Utilidades generales y normalización de nombres
     ├── vectors.ts        Álgebra de vectores y (de)serialización
-    ├── gemini.ts         Cliente de embeddings y generación de texto
+    ├── gemini.ts         Cliente de embeddings, texto y JSON estructurado
+    ├── geocode.ts        Open-Meteo y Nominatim
     ├── sources.ts        CRUD de fuentes
     ├── categories.ts     CRUD, prototipos y clasificación
-    ├── events.ts         Agrupación de artículos en eventos
+    ├── events.ts         Agrupación de artículos en eventos y estado derivado
+    ├── entities.ts       Resolución de entidades, enlaces con eventos y geocodificación
+    ├── enrich.ts         Extracción con LLM de resumen, tipo, actores y lugares
     ├── ingest.ts         Descarga y parseo de RSS/GDELT
-    ├── pipeline.ts       Ciclo: ingesta → embeddings → clasificación → eventos
-    ├── queries.ts        Consultas de lectura (métricas, tendencias, listados)
+    ├── pipeline.ts       Ciclo: ingesta → embeddings → clasificación → eventos → enriquecimiento
+    ├── queries.ts        Consultas de lectura (métricas, tendencias, eventos, entidades)
     ├── runs.ts           Registro de ejecuciones
     ├── settings.ts       Ajustes editables
     ├── digest.ts         Briefing con LLM
@@ -98,13 +152,17 @@ osint-radar/
 
 | Sección | Qué permite |
 |---|---|
-| **Resumen** | KPIs, volumen diario, tendencias con anomalías, últimos ciclos. Botones para ejecutar un ciclo, reclasificar y reindexar |
-| **Eventos** | Eventos agrupados por nº de medios; despliega los artículos de cada uno |
+| **Resumen** | KPIs, volumen diario, actores y lugares más activos, tendencias con anomalías, últimos ciclos. Botones para ejecutar un ciclo, enriquecer, reclasificar y reindexar |
+| **Eventos** | Filtros por periodo, estado y tipo. Muestra resumen, primera noticia, actores y lugares (clicables). Al desplegar: roles y artículos |
+| **Mapa** | Eventos por lugar, con tamaño según el número de medios y color según actividad |
+| **Entidades** | Actores y lugares con filtros y búsqueda por alias. Ficha con alias, coocurrencias y eventos |
 | **Artículos** | Listado filtrable por texto, categoría y fuente, con la similitud de cada categoría |
 | **Categorías** | Crear y editar categorías (descripción, ejemplos, umbral) |
 | **Fuentes** | Añadir, activar, descargar al momento y ver el último error de cada fuente |
 | **Briefing** | Genera y muestra el resumen de las últimas 24 h |
-| **Ajustes** | Similitud de eventos, ventanas de tiempo, retención y planificador |
+| **Ajustes** | Eventos, enriquecimiento, geocodificación, retención y planificador |
+
+El mapa usa Leaflet y teselas de CARTO/OpenStreetMap, cargados desde su CDN solo al abrir esa vista (necesita conexión). El resto del dashboard no tiene dependencias.
 
 ## API
 
@@ -115,8 +173,11 @@ Todas las rutas cuelgan de `/api` y requieren `Authorization: Bearer <ADMIN_TOKE
 | GET | `/overview` | KPIs y volumen diario |
 | GET | `/trends` | Tendencia y anomalías por categoría |
 | GET | `/runs` | Últimas ejecuciones |
-| GET | `/events?hours=&limit=` | Eventos principales |
-| GET | `/events/:id` | Artículos de un evento |
+| GET | `/events?hours=&limit=&status=&type=&entity=` | Eventos con estado, actores y lugares |
+| GET | `/events/:id` | Evento con sus artículos |
+| GET | `/event-types` | Tipos de evento surgidos hasta ahora |
+| GET | `/entities?kind=&hours=&limit=&q=` | Entidades (`hours=0` = todo el histórico) |
+| GET | `/entities/:id` | Entidad con alias y coocurrencias |
 | GET | `/articles?limit=&offset=&category=&source=&q=` | Listado de artículos |
 | GET/POST | `/sources` | Listar / crear fuentes |
 | PATCH/DELETE | `/sources/:id` | Editar / eliminar fuente |
@@ -125,8 +186,9 @@ Todas las rutas cuelgan de `/api` y requieren `Authorization: Bearer <ADMIN_TOKE
 | PATCH/DELETE | `/categories/:id` | Editar / eliminar categoría |
 | GET/PUT | `/settings` | Leer / guardar ajustes |
 | POST | `/pipeline/run` | Ejecutar un ciclo completo |
+| POST | `/pipeline/enrich` | Enriquecer eventos y geocodificar lugares ahora |
 | POST | `/pipeline/reclassify` | Reclasificar con los embeddings guardados |
-| POST | `/pipeline/reembed` | Descartar embeddings y recalcular todo |
+| POST | `/pipeline/reembed` | Descartar embeddings, eventos y entidades y recalcular todo |
 | GET/POST | `/digest` | Último briefing / generar uno nuevo |
 
 ## Afinar la clasificación
@@ -136,7 +198,7 @@ Todas las rutas cuelgan de `/api` y requieren `Authorization: Bearer <ADMIN_TOKE
 3. Pulsa **Reclasificar**: es instantáneo y no consume cuota de la API.
 4. Repite hasta que el resultado cuadre. El 0,60 por defecto es un punto de partida, no un valor calibrado.
 
-Si cambias `EMBEDDING_MODEL` o `EMBEDDING_DIMENSIONS`, usa **Reindexar todo**: los vectores de modelos distintos no son comparables.
+Si cambias `EMBEDDING_MODEL` o `EMBEDDING_DIMENSIONS`, usa **Reindexar todo**: los vectores de modelos distintos no son comparables. Esto también borra las entidades, que se regeneran en los ciclos siguientes.
 
 ## Solución de problemas
 
@@ -145,9 +207,13 @@ Si cambias `EMBEDDING_MODEL` o `EMBEDDING_DIMENSIONS`, usa **Reindexar todo**: l
 | Errores 400 en todas las llamadas del dashboard | Cabecera `Authorization` vacía o `ADMIN_TOKEN` con caracteres no permitidos. Usa solo `A-Z a-z 0-9 . _ ~ + / -` |
 | `ERR_EMPTY_RESPONSE` al ejecutar ciclo, reclasificar o generar briefing | Timeout de inactividad de Bun. `idleTimeout: 255` en el `export default` de `src/index.ts` |
 | Artículos descargados pero sin categoría | Falta `GEMINI_API_KEY`, o los umbrales son demasiado altos |
+| Eventos sin actores ni lugares | Falta `GEMINI_API_KEY`, `enrichEnabled` está desactivado o los eventos no llegan a `enrichMinSources` medios. Prueba a bajarlo a 1 |
+| Lugares sin coordenadas | Open-Meteo y Nominatim no lo conocen o no hay red. Los lugares fallidos no se reintentan; los errores de red sí |
+| Actores distintos fusionados o duplicados | Ajusta `entityMergeSimilarity` en Ajustes (más alto = fusiona menos) |
 | Una fuente muestra error | La URL del feed cambió o el sitio bloquea peticiones automáticas. El error aparece en **Fuentes** |
-| Errores de cuota de Gemini | El ciclo falla y se reintenta al minuto siguiente; los artículos quedan pendientes, no se pierden |
+| Errores de cuota de Gemini | El ciclo falla (o el enriquecimiento se salta) y se reintenta al minuto siguiente; nada se pierde |
 | GDELT devuelve errores intermitentes | Limita a ~1 petición cada 5 s; el servidor ya espera entre consultas |
+| El mapa no carga | Necesita conexión para descargar Leaflet y las teselas |
 
 ## Scripts
 
@@ -167,5 +233,7 @@ Si cambias `EMBEDDING_MODEL` o `EMBEDDING_DIMENSIONS`, usa **Reindexar todo**: l
 
 - Peso de fiabilidad por fuente para ordenar eventos.
 - Botón «mal clasificado» que añada el titular como ejemplo de la categoría correcta.
-- Entidades y geolocalización (el GKG de GDELT las incluye).
+- Tendencias y anomalías por entidad (reutilizando el z-score de las categorías).
+- Fusión manual de entidades desde el dashboard.
+- GKG de GDELT como verificación cruzada de entidades y localizaciones.
 - Ciclo en segundo plano con progreso consultable desde el dashboard.

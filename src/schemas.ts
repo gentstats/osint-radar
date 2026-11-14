@@ -8,7 +8,7 @@ export const sourceSchema = z.object({
     type: z.enum(["rss", "gdelt"]),
     url: z.string().trim().min(1).max(1000),
     interval_minutes: z.number().int().min(5).max(1440).default(30),
-    enabled: flag.default(true),
+    enabled: flag.default(1),
 });
 export const sourcePatchSchema = sourceSchema.partial();
 
@@ -17,7 +17,7 @@ export const categorySchema = z.object({
     description: z.string().trim().min(10).max(1000),
     examples: z.string().max(4000).default(""),
     threshold: z.number().min(0.3).max(0.95).default(0.6),
-    enabled: flag.default(true),
+    enabled: flag.default(1),
 });
 export const categoryPatchSchema = categorySchema.partial();
 
@@ -25,9 +25,16 @@ export const settingsSchema = z
     .object({
         eventSimilarity: z.number().min(0.5).max(0.99),
         eventWindowHours: z.number().int().min(1).max(168),
+        eventActiveMinHours: z.number().min(1).max(168),
         retentionDays: z.number().int().min(1).max(365),
         maxArticleAgeHours: z.number().int().min(1).max(720),
         schedulerEnabled: flag,
+        enrichEnabled: flag,
+        enrichMinSources: z.number().int().min(1).max(10),
+        enrichMaxEventsPerRun: z.number().int().min(1).max(100),
+        entityMergeSimilarity: z.number().min(0.7).max(0.99),
+        geocodingEnabled: flag,
+        entityRetentionDays: z.number().int().min(1).max(1095),
     })
     .partial();
 

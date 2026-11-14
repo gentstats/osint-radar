@@ -28,3 +28,17 @@ export function canonicalUrl(raw: string): string {
         return raw;
     }
 }
+
+/** Minúsculas, sin acentos ni signos y sin "the" inicial: clave para comparar nombres. */
+export function normalizeName(value: string): string {
+    return value
+        .normalize("NFD")
+        .replace(/\p{M}+/gu, "")
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .trim()
+        .replace(/^the /, "");
+}
+
+/** Etiqueta corta en snake_case (tipos de evento, subtipos, roles). */
+export const slug = (value: string): string => normalizeName(value).replace(/ /g, "_").slice(0, 40);

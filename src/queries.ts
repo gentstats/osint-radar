@@ -1,8 +1,11 @@
-import { DAY_MS } from "./config";
+import { DAY_MS, HOUR_MS } from "./config";
 import { db } from "./db";
 import { geminiConfigured } from "./gemini";
 import { listCategories } from "./categories";
-import type { Category } from "./types";
+import { eventStatus } from "./events";
+import { getSettings } from "./settings";
+import type { Category, Entity, EntityKind, EventStatus } from "./types";
+import { normalizeName } from "./utils";
 
 const DAYS_TRACKED = 7;
 const ANOMALY_Z_SCORE = 2;
@@ -31,11 +34,31 @@ export function getOverview() {
             since,
         ),
         events24h: countRows("SELECT COUNT(*) AS n FROM events WHERE last_seen_at >= ?", since),
+        eventsActive: countActiveEvents(now),
+        eventsEnriched24h: countRows(
+            "SELECT COUNT(*) AS n FROM events WHERE last_seen_at >= ? AND extracted_at IS NOT NULL",
+            since,
+        ),
+        entitiesTotal: countRows("SELECT COUNT(*) AS n FROM entities"),
+        locationsLocated: countRows("SELECT COUNT(*) AS n FROM entities WHERE kind = 'location' AND lat IS NOT NULL"),
         pending: countPendingArticles(),
         sourcesEnabled: countRows("SELECT COUNT(*) AS n FROM sources WHERE enabled = 1"),
         sourcesFailing: countRows("SELECT COUNT(*) AS n FROM sources WHERE enabled = 1 AND last_error IS NOT NULL"),
         dailyVolume: getDailyVolume(now),
     };
+}
+
+function countActiveEvents(now: number): number {
+    const settings = getSettings();
+    return db
+        .query<{ first_seen_at: number; last_seen_at: number; article_count: number }, [number]>(
+            `SELECT e.first_seen_at, e.last_seen_at, COUNT(a.id) AS article_count
+       FROM events e JOIN articles a ON a.event_id = e.id
+       WHERE e.last_seen_at >= ?
+       GROUP BY e.id`,
+        )
+        .all(now - settings.eventWindowHours * HOUR_MS)
+        .filter((row) => eventStatus(row, now, settings) === "active").length;
 }
 
 /** Artículos por ventana de 24 h. Índice 0 = últimas 24 h, 1 = las 24 h anteriores, etc. */
@@ -119,21 +142,88 @@ function buildTrend(category: Category, daily: number[], baselineDays: number): 
 
 // ---------- Eventos ----------
 
+export interface EventEntityRef {
+    id: number;
+    kind: EntityKind;
+    name: string;
+    subtype: string | null;
+    country_code: string | null;
+    lat: number | null;
+    lon: number | null;
+    role: string;
+    weight: number;
+}
+
 export interface EventSummary {
     id: number;
     title: string;
+    summary: string | null;
+    event_type: string | null;
     first_seen_at: number;
     last_seen_at: number;
     article_count: number;
     source_count: number;
     categories: string[];
+    status: EventStatus;
+    enriched: boolean;
+    actors: EventEntityRef[];
+    locations: EventEntityRef[];
 }
 
-export function getTopEvents(hours: number, limit: number): EventSummary[] {
-    const since = Date.now() - hours * 3_600_000;
+export interface EventFilter {
+    hours: number;
+    limit: number;
+    status?: EventStatus;
+    entityId?: number;
+    eventType?: string;
+}
+
+interface EventRow {
+    id: number;
+    title: string;
+    summary: string | null;
+    event_type: string | null;
+    extracted_at: number | null;
+    first_seen_at: number;
+    last_seen_at: number;
+    article_count: number;
+    source_count: number;
+    categories: string | null;
+}
+
+export function getTopEvents(filter: EventFilter): EventSummary[] {
+    const conditions = ["e.last_seen_at >= ?"];
+    const params: (string | number)[] = [Date.now() - filter.hours * HOUR_MS];
+
+    if (filter.entityId) {
+        conditions.push("EXISTS (SELECT 1 FROM event_entities x WHERE x.event_id = e.id AND x.entity_id = ?)");
+        params.push(filter.entityId);
+    }
+    if (filter.eventType) {
+        conditions.push("e.event_type = ?");
+        params.push(filter.eventType);
+    }
+    return loadEvents(conditions, params, filter.limit, filter.status);
+}
+
+export function getEventDetail(id: number) {
+    const [event] = loadEvents(["e.id = ?"], [id], 1);
+    return event ? { event, articles: getEventArticles(id) } : null;
+}
+
+/** El estado se calcula en TypeScript, así que con filtro de estado se trae un margen y se recorta después. */
+function loadEvents(
+    conditions: string[],
+    params: (string | number)[],
+    limit: number,
+    status?: EventStatus,
+): EventSummary[] {
+    const now = Date.now();
+    const settings = getSettings();
+
     const rows = db
-        .query<Omit<EventSummary, "categories"> & { categories: string | null }, [number, number]>(
-            `SELECT e.id, e.title, e.first_seen_at, e.last_seen_at,
+        .query<EventRow, (string | number)[]>(
+            `SELECT e.id, e.title, e.summary, e.event_type, e.extracted_at, e.first_seen_at, e.last_seen_at,
               COUNT(DISTINCT a.id) AS article_count,
               COUNT(DISTINCT a.source_id) AS source_count,
               GROUP_CONCAT(DISTINCT c.name) AS categories
@@ -141,14 +231,55 @@ export function getTopEvents(hours: number, limit: number): EventSummary[] {
        JOIN articles a ON a.event_id = e.id
        LEFT JOIN article_categories ac ON ac.article_id = a.id
        LEFT JOIN categories c ON c.id = ac.category_id
-       WHERE e.last_seen_at >= ?
+       WHERE ${conditions.join(" AND ")}
        GROUP BY e.id
        ORDER BY source_count DESC, article_count DESC, e.last_seen_at DESC
        LIMIT ?`,
         )
-        .all(since, limit);
+        .all(...params, status ? 5000 : limit);
 
-    return rows.map((row) => ({ ...row, categories: row.categories ? row.categories.split(",") : [] }));
+    const events = rows
+        .map(({ extracted_at, categories, ...row }) => ({
+            ...row,
+            categories: categories ? categories.split(",") : [],
+            status: eventStatus(row, now, settings),
+            enriched: extracted_at !== null,
+        }))
+        .filter((event) => !status || event.status === status)
+        .slice(0, limit);
+
+    const entities = loadEventEntities(events.map((event) => event.id));
+    return events.map((event) => {
+        const refs = entities.get(event.id) ?? [];
+        return {
+            ...event,
+            actors: refs.filter((ref) => ref.kind === "actor"),
+            locations: refs.filter((ref) => ref.kind === "location"),
+        };
+    });
+}
+
+function loadEventEntities(eventIds: number[]): Map<number, EventEntityRef[]> {
+    const byEvent = new Map<number, EventEntityRef[]>();
+    if (eventIds.length === 0) return byEvent;
+
+    const placeholders = eventIds.map(() => "?").join(", ");
+    const rows = db
+        .query<EventEntityRef & { event_id: number }, number[]>(
+            `SELECT ee.event_id, en.id, en.kind, en.name, en.subtype, en.country_code, en.lat, en.lon,
+              ee.role, ee.weight
+       FROM event_entities ee JOIN entities en ON en.id = ee.entity_id
+       WHERE ee.event_id IN (${placeholders})
+       ORDER BY ee.weight DESC`,
+        )
+        .all(...eventIds);
+
+    for (const { event_id, ...ref } of rows) {
+        const list = byEvent.get(event_id) ?? [];
+        list.push(ref);
+        byEvent.set(event_id, list);
+    }
+    return byEvent;
 }
 
 export function getEventArticles(eventId: number) {
@@ -159,6 +290,95 @@ export function getEventArticles(eventId: number) {
        WHERE a.event_id = ? ORDER BY a.published_at`,
         )
         .all(eventId);
+}
+
+/** Tipos de evento que han ido apareciendo (vocabulario emergente). */
+export const listEventTypes = () =>
+    db
+        .query<{ event_type: string; n: number }, []>(
+            `SELECT event_type, COUNT(*) AS n FROM events
+       WHERE event_type IS NOT NULL GROUP BY event_type ORDER BY n DESC LIMIT 60`,
+        )
+        .all();
+
+// ---------- Entidades ----------
+
+export interface EntityFilter {
+    kind?: EntityKind;
+    /** 0 = sin límite de tiempo. */
+    hours: number;
+    limit: number;
+    search?: string;
+}
+
+export interface EntityListItem extends Entity {
+    recent_events: number;
+    total_events: number;
+}
+
+export function listEntities(filter: EntityFilter): EntityListItem[] {
+    const since = Date.now() - filter.hours * HOUR_MS;
+    const conditions = ["1 = 1"];
+    const params: (string | number)[] = [since];
+
+    if (filter.kind) {
+        conditions.push("en.kind = ?");
+        params.push(filter.kind);
+    }
+    if (filter.search) {
+        conditions.push(
+            "(en.name LIKE ? OR EXISTS (SELECT 1 FROM entity_aliases al WHERE al.entity_id = en.id AND al.alias LIKE ?))",
+        );
+        params.push(`%${filter.search}%`, `%${normalizeName(filter.search)}%`);
+    }
+
+    return db
+        .query<EntityListItem, (string | number)[]>(
+            `SELECT en.id, en.kind, en.subtype, en.name, en.country_code, en.lat, en.lon, en.geo_source,
+              en.first_seen_at, en.last_seen_at,
+              COUNT(DISTINCT CASE WHEN e.last_seen_at >= ? THEN e.id END) AS recent_events,
+              COUNT(DISTINCT e.id) AS total_events
+       FROM entities en
+       LEFT JOIN event_entities ee ON ee.entity_id = en.id
+       LEFT JOIN events e ON e.id = ee.event_id
+       WHERE ${conditions.join(" AND ")}
+       GROUP BY en.id
+       ${filter.hours > 0 ? "HAVING recent_events > 0" : ""}
+       ORDER BY recent_events DESC, total_events DESC, en.last_seen_at DESC
+       LIMIT ?`,
+        )
+        .all(...params, filter.limit);
+}
+
+export function getEntityDetail(id: number) {
+    const entity = db
+        .query<Entity, [number]>(
+            `SELECT id, kind, subtype, name, country_code, lat, lon, geo_source, first_seen_at, last_seen_at
+       FROM entities WHERE id = ?`,
+        )
+        .get(id);
+    if (!entity) return null;
+
+    const aliases = db
+        .query<{ alias: string }, [number]>("SELECT alias FROM entity_aliases WHERE entity_id = ? ORDER BY alias")
+        .all(id)
+        .map((row) => row.alias);
+
+    // Coocurrencias: con qué otras entidades comparte eventos.
+    const related = db
+        .query<{ id: number; kind: EntityKind; subtype: string | null; name: string; shared: number }, [number]>(
+            `SELECT en.id, en.kind, en.subtype, en.name, COUNT(DISTINCT ee2.event_id) AS shared
+       FROM event_entities ee1
+       JOIN event_entities ee2 ON ee2.event_id = ee1.event_id AND ee2.entity_id != ee1.entity_id
+       JOIN entities en ON en.id = ee2.entity_id
+       WHERE ee1.entity_id = ?
+       GROUP BY en.id
+       ORDER BY shared DESC
+       LIMIT 15`,
+        )
+        .all(id);
+
+    return { entity, aliases, related };
 }
 
 // ---------- Artículos ----------

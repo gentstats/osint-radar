@@ -17,6 +17,7 @@
             --blue: #2962ff;
             --red: #f23645;
             --amber: #f5a524;
+            --violet: #a78bfa;
         }
 
         * {
@@ -111,6 +112,12 @@
             border-radius: 12px;
             padding: 16px;
             margin-bottom: 16px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 16px;
         }
 
         .kpis {
@@ -241,6 +248,11 @@
             border-color: var(--muted);
         }
 
+        .btn:disabled {
+            opacity: .4;
+            cursor: default;
+        }
+
         .btn.primary {
             background: var(--green);
             color: #000;
@@ -258,11 +270,57 @@
             background: var(--panel-2);
             font-size: 12px;
             margin: 0 4px 2px 0;
+            border: 1px solid transparent;
         }
 
         .chip.alert {
             background: #3b1219;
             color: var(--red);
+        }
+
+        .chip.clickable {
+            cursor: pointer;
+        }
+
+        .chip.clickable:hover {
+            border-color: var(--muted);
+        }
+
+        .chip.actor {
+            background: #241d3b;
+            color: var(--violet);
+        }
+
+        .chip.place {
+            background: #12233f;
+            color: #7ea6ff;
+        }
+
+        .chip.type {
+            background: transparent;
+            border-color: var(--line);
+            color: var(--muted);
+        }
+
+        .chip.status-active {
+            background: #0f2b1b;
+            color: var(--green);
+        }
+
+        .chip.status-cooling {
+            background: #3a2c0a;
+            color: var(--amber);
+        }
+
+        .chip.status-expired {
+            background: var(--panel-2);
+            color: var(--muted);
+        }
+
+        .event-summary {
+            color: var(--muted);
+            font-size: 13px;
+            margin-top: 2px;
         }
 
         .detail {
@@ -273,6 +331,10 @@
 
         .detail div {
             padding: 2px 0;
+        }
+
+        .detail b {
+            color: var(--text);
         }
 
         .error {
@@ -339,6 +401,24 @@
             margin-left: 18px;
         }
 
+        #map {
+            height: 68vh;
+            min-height: 380px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: #0b0e14;
+        }
+
+        #view .leaflet-popup-content-wrapper,
+        #view .leaflet-popup-tip {
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        #view .leaflet-popup-content div {
+            padding: 2px 0;
+        }
+
         #toast {
             position: fixed;
             bottom: 20px;
@@ -349,6 +429,7 @@
             padding: 10px 16px;
             display: none;
             max-width: 420px;
+            z-index: 2000;
         }
 
         #toast.error {
@@ -364,6 +445,8 @@
         <nav>
             <a href="#overview" data-view="overview">Resumen</a>
             <a href="#events" data-view="events">Eventos</a>
+            <a href="#map" data-view="map">Mapa</a>
+            <a href="#entities" data-view="entities">Entidades</a>
             <a href="#articles" data-view="articles">Artículos</a>
             <a href="#categories" data-view="categories">Categorías</a>
             <a href="#sources" data-view="sources">Fuentes</a>
@@ -441,32 +524,65 @@
         // ---------- Estado de la interfaz ----------
         const state = {
             eventHours: 24,
+            eventStatus: "",
+            eventType: "",
             articles: { q: "", category: "", source: "", offset: 0 },
+            entities: { kind: "", hours: 168, q: "" },
+            entityId: null,
         };
         const ARTICLES_PER_PAGE = 50;
-        const HOUR_LABELS = { 24: "24 h", 48: "48 h", 168: "7 días" };
+        const HOUR_LABELS = { 24: "Últimas 24 h", 48: "Últimas 48 h", 168: "Últimos 7 días", 720: "Últimos 30 días" };
+        const ENTITY_HOUR_LABELS = { 24: "24 h", 168: "7 días", 720: "30 días", 0: "Todo el histórico" };
+        const STATUS_LABELS = { active: "Activo", cooling: "Enfriándose", expired: "Caducado" };
+
+        const statusChip = (status) => `<span class="chip status-${esc(status)}">${esc(STATUS_LABELS[status] ?? status)}</span>`;
+        const entityTitle = (e) => [e.role, e.subtype, e.country_code, e.lat != null ? `${e.lat.toFixed(2)}, ${e.lon.toFixed(2)}` : ""].filter(Boolean).join(" · ");
+        const entityChip = (e, cls) =>
+            `<span class="chip clickable ${cls}" data-action="open-entity" data-id="${e.id}" title="${esc(entityTitle(e))}">${esc(e.name)}</span>`;
+        const entityLink = (e) => `<a href="#" data-action="open-entity" data-id="${e.id}">${esc(e.name)}</a>`;
+        const options = (items, selected, label = (item) => item.name, value = (item) => item.id) =>
+            items.map((item) => `<option value="${esc(value(item))}" ${String(value(item)) === String(selected) ? "selected" : ""}>${esc(label(item))}</option>`).join("");
 
         // ---------- Vistas ----------
         const kpi = (label, value, extraClass = "") => `<div class="kpi"><b class="${extraClass}">${value}</b><span>${label}</span></div>`;
 
+        const topEntitiesCard = (title, items) => `
+    <div class="card">
+      <h3>${title}</h3>
+      <table>
+        <thead><tr><th>Nombre</th><th>Tipo</th><th>Eventos 24 h</th></tr></thead>
+        <tbody>${items.map((e) => `<tr><td>${entityLink(e)}</td><td class="muted">${esc(e.subtype ?? "—")}</td><td>${e.recent_events}</td></tr>`).join("")
+            || `<tr><td colspan="3" class="muted">Todavía sin datos: se generan al enriquecer eventos</td></tr>`}</tbody>
+      </table>
+    </div>`;
+
         async function overviewView() {
-            const [overview, trends, runs] = await Promise.all([api("/overview"), api("/trends"), api("/runs")]);
+            const [overview, trends, runs, actors, places] = await Promise.all([
+                api("/overview"), api("/trends"), api("/runs"),
+                api("/entities?kind=actor&hours=24&limit=8"),
+                api("/entities?kind=location&hours=24&limit=8"),
+            ]);
             const volume = [...overview.dailyVolume].reverse();
             const maxVolume = Math.max(1, ...volume);
 
             return `
     <h2>Resumen</h2>
-    ${overview.geminiConfigured ? "" : `<div class="banner">Falta <b>GEMINI_API_KEY</b>: se descargan artículos, pero no se clasifican.</div>`}
+    ${overview.geminiConfigured ? "" : `<div class="banner">Falta <b>GEMINI_API_KEY</b>: se descargan artículos, pero no se clasifican ni se enriquecen los eventos.</div>`}
     <div class="toolbar">
       <button class="btn primary" data-action="run-pipeline">Ejecutar ciclo ahora</button>
+      <button class="btn" data-action="enrich">Enriquecer eventos</button>
       <button class="btn" data-action="reclassify">Reclasificar</button>
       <button class="btn danger" data-action="reembed">Reindexar todo</button>
     </div>
     <div class="kpis">
       ${kpi("Artículos (24 h)", overview.articles24h)}
       ${kpi("Eventos (24 h)", overview.events24h)}
+      ${kpi("Eventos activos ahora", overview.eventsActive, "up")}
+      ${kpi("Enriquecidos (24 h)", `${overview.eventsEnriched24h}/${overview.events24h}`)}
       ${kpi("Sin categoría (24 h)", overview.unclassified24h, overview.unclassified24h > overview.articles24h / 2 ? "down" : "")}
       ${kpi("Pendientes de procesar", overview.pending)}
+      ${kpi("Entidades", overview.entitiesTotal)}
+      ${kpi("Lugares con coordenadas", overview.locationsLocated)}
       ${kpi("Fuentes activas", overview.sourcesEnabled)}
       ${kpi("Fuentes con error", overview.sourcesFailing, overview.sourcesFailing ? "down" : "up")}
       ${kpi("Artículos totales", overview.articlesTotal)}
@@ -475,6 +591,11 @@
     <div class="card">
       <h3>Volumen diario (más antiguo → últimas 24 h)</h3>
       <div class="bars">${volume.map((n) => `<div class="bar"><span>${n}</span><i style="height:${(n / maxVolume) * 85}%"></i></div>`).join("")}</div>
+    </div>
+
+    <div class="grid-2">
+      ${topEntitiesCard("Actores más activos (24 h)", actors)}
+      ${topEntitiesCard("Lugares más activos (24 h)", places)}
     </div>
 
     <div class="card">
@@ -513,37 +634,212 @@
   </tr>`;
         }
 
+        /** Formulario de filtros compartido por Eventos y Mapa (`types` solo en Eventos). */
+        function eventFilterForm(types = null) {
+            return `
+    <form class="toolbar" data-form="event-filters" data-autosubmit>
+      <select name="hours">${options(Object.entries(HOUR_LABELS), state.eventHours, ([, label]) => label, ([hours]) => hours)}</select>
+      <select name="status">
+        <option value="">Todos los estados</option>
+        ${options(Object.entries(STATUS_LABELS), state.eventStatus, ([, label]) => label, ([status]) => status)}
+      </select>
+      ${types ? `<select name="type"><option value="">Todos los tipos</option>${options(types, state.eventType, (t) => `${t.event_type} (${t.n})`, (t) => t.event_type)}</select>` : ""}
+      <button class="btn primary">Filtrar</button>
+    </form>`;
+        }
+
         async function eventsView() {
-            const events = await api(`/events?hours=${state.eventHours}&limit=60`);
-            const buttons = Object.entries(HOUR_LABELS).map(([hours, label]) =>
-                `<button class="btn ${Number(hours) === state.eventHours ? "primary" : ""}" data-action="set-event-hours" data-hours="${hours}">${label}</button>`).join("");
+            const query = new URLSearchParams({ hours: state.eventHours, limit: 80 });
+            if (state.eventStatus) query.set("status", state.eventStatus);
+            if (state.eventType) query.set("type", state.eventType);
+            const [events, types] = await Promise.all([api(`/events?${query}`), api("/event-types")]);
 
             return `
     <h2>Eventos</h2>
-    <div class="toolbar">${buttons}</div>
+    ${eventFilterForm(types)}
     <div class="card"><table>
-      <thead><tr><th>Evento</th><th>Medios</th><th>Artículos</th><th>Categorías</th><th>Último</th></tr></thead>
+      <thead><tr><th>Evento</th><th>Estado</th><th>Primera noticia</th><th>Última</th><th>Medios</th><th>Art.</th><th>Actores y lugares</th><th>Categorías</th></tr></thead>
       <tbody>${events.map((event) => `
         <tr>
-          <td><a href="#" data-action="toggle-event" data-id="${event.id}">${esc(event.title)}</a>
-              <div class="detail" id="event-${event.id}"></div></td>
-          <td>${event.source_count}</td><td>${event.article_count}</td>
-          <td>${chips(event.categories)}</td>
+          <td>
+            <a href="#" data-action="toggle-event" data-id="${event.id}">${esc(event.title)}</a>
+            ${event.event_type ? `<span class="chip type">${esc(event.event_type)}</span>` : ""}
+            ${event.summary ? `<div class="event-summary">${esc(event.summary)}</div>` : ""}
+            <div class="detail" id="event-${event.id}"></div>
+          </td>
+          <td>${statusChip(event.status)}</td>
+          <td>${formatTime(event.first_seen_at)}<div class="muted">${timeAgo(event.first_seen_at)}</div></td>
           <td class="muted">${timeAgo(event.last_seen_at)}</td>
-        </tr>`).join("") || `<tr><td colspan="5" class="muted">Sin eventos en este periodo</td></tr>`}
+          <td>${event.source_count}</td><td>${event.article_count}</td>
+          <td>${event.actors.slice(0, 4).map((a) => entityChip(a, "actor")).join("")}${event.locations.slice(0, 3).map((p) => entityChip(p, "place")).join("")}
+              ${event.enriched ? "" : `<span class="muted">sin enriquecer</span>`}</td>
+          <td>${chips(event.categories)}</td>
+        </tr>`).join("") || `<tr><td colspan="8" class="muted">Sin eventos con estos filtros</td></tr>`}
       </tbody>
     </table></div>`;
         }
 
+        // ---------- Mapa (Leaflet se carga solo al abrir la vista) ----------
+        const LEAFLET = "https://unpkg.com/leaflet@1.9.4/dist/leaflet";
+        let leafletReady;
+        let leafletMap;
+
+        function loadLeaflet() {
+            leafletReady ??= new Promise((resolve, reject) => {
+                const css = document.createElement("link");
+                css.rel = "stylesheet";
+                css.href = `${LEAFLET}.css`;
+                css.integrity = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
+                css.crossOrigin = "";
+                document.head.append(css);
+
+                const script = document.createElement("script");
+                script.src = `${LEAFLET}.js`;
+                script.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
+                script.crossOrigin = "";
+                script.onload = () => resolve(window.L);
+                script.onerror = () => reject(new Error("No se pudo cargar Leaflet (¿sin conexión?)"));
+                document.head.append(script);
+            }).catch((error) => { leafletReady = undefined; throw error; });
+            return leafletReady;
+        }
+
+        /** Donde ocurre el evento: primero "occurred", si no cualquier lugar con coordenadas. */
+        const primaryPlace = (event) =>
+            event.locations.find((p) => p.role === "occurred" && p.lat != null) ?? event.locations.find((p) => p.lat != null);
+
+        async function mapView() {
+            return `
+    <h2>Mapa</h2>
+    ${eventFilterForm()}
+    <p class="muted" id="map-count">Cargando…</p>
+    <div id="map"></div>`;
+        }
+
+        async function mapHook() {
+            const box = $("#map");
+            try {
+                const L = await loadLeaflet();
+                const query = new URLSearchParams({ hours: state.eventHours, limit: 200 });
+                if (state.eventStatus) query.set("status", state.eventStatus);
+                const events = await api(`/events?${query}`);
+                if ($("#map") !== box) return; // el usuario ya cambió de vista
+
+                leafletMap?.remove();
+                leafletMap = L.map(box, { worldCopyJump: true }).setView([30, 20], 2);
+                L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+                    attribution: "&copy; OpenStreetMap &copy; CARTO", subdomains: "abcd", maxZoom: 12,
+                }).addTo(leafletMap);
+
+                // Un círculo por lugar, con todos los eventos que ocurren allí.
+                const groups = new Map();
+                let located = 0;
+                for (const event of events) {
+                    const place = primaryPlace(event);
+                    if (!place) continue;
+                    located++;
+                    const group = groups.get(place.id) ?? { place, events: [] };
+                    group.events.push(event);
+                    groups.set(place.id, group);
+                }
+
+                for (const { place, events: list } of groups.values()) {
+                    const sources = list.reduce((sum, e) => sum + e.source_count, 0);
+                    const color = list.some((e) => e.status === "active") ? "#1ed760" : "#7d8599";
+                    const popup = `<b>${esc(place.name)}</b>${list.slice(0, 8).map((e) =>
+                        `<div>${statusChip(e.status)} ${esc(e.title)} <span class="muted">· ${e.source_count} medios</span></div>`).join("")}
+                        ${list.length > 8 ? `<div class="muted">+${list.length - 8} más</div>` : ""}`;
+                    L.circleMarker([place.lat, place.lon], {
+                        radius: 5 + Math.min(18, Math.sqrt(sources) * 2.5), color, fillColor: color, fillOpacity: 0.35, weight: 2,
+                    }).addTo(leafletMap).bindPopup(popup, { maxWidth: 360 });
+                }
+                $("#map-count").textContent = `${located} de ${events.length} eventos con localización · ${groups.size} lugares`;
+            } catch (error) {
+                toast(error.message, true);
+            }
+        }
+
+        // ---------- Entidades ----------
+        async function entityDetailHtml(id) {
+            const [{ entity, aliases, related }, events] = await Promise.all([
+                api(`/entities/${id}`),
+                api(`/events?entity=${id}&hours=8760&limit=15`),
+            ]);
+            const coords = entity.lat != null
+                ? `${entity.lat.toFixed(3)}, ${entity.lon.toFixed(3)} (${entity.geo_source === "geocoder" ? "geocodificado" : "aproximado por el LLM"})`
+                : "sin coordenadas";
+
+            return `
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">${esc(entity.name)}</h2>
+        <button class="btn" data-action="close-entity">Cerrar</button>
+      </div>
+      <p class="muted">${entity.kind === "actor" ? "Actor" : "Lugar"} · ${esc(entity.subtype ?? "—")} · ${esc(entity.country_code ?? "—")}${entity.kind === "location" ? ` · ${coords}` : ""}</p>
+      <p class="muted">Primera aparición ${formatTime(entity.first_seen_at)} · última ${timeAgo(entity.last_seen_at)}</p>
+      <h3>Alias</h3>
+      <p>${chips(aliases) || `<span class="muted">—</span>`}</p>
+      <h3>Aparece junto a</h3>
+      <p>${related.map((r) => `<span class="chip clickable ${r.kind === "actor" ? "actor" : "place"}" data-action="open-entity" data-id="${r.id}">${esc(r.name)} · ${r.shared}</span>`).join("") || `<span class="muted">—</span>`}</p>
+      <h3>Eventos</h3>
+      <table>
+        <thead><tr><th>Evento</th><th>Estado</th><th>Primera noticia</th><th>Medios</th></tr></thead>
+        <tbody>${events.map((e) => `<tr><td>${esc(e.title)}</td><td>${statusChip(e.status)}</td><td class="muted">${formatTime(e.first_seen_at)}</td><td>${e.source_count}</td></tr>`).join("")
+                || `<tr><td colspan="4" class="muted">Sin eventos</td></tr>`}</tbody>
+      </table>
+    </div>`;
+        }
+
+        async function entitiesView() {
+            const filters = state.entities;
+            const query = new URLSearchParams({ hours: filters.hours, limit: 100, q: filters.q });
+            if (filters.kind) query.set("kind", filters.kind);
+            const entities = await api(`/entities?${query}`);
+
+            let detail = "";
+            if (state.entityId) {
+                try { detail = await entityDetailHtml(state.entityId); } catch { state.entityId = null; }
+            }
+
+            return `
+    <h2>Entidades</h2>
+    ${detail}
+    <form class="toolbar" data-form="entity-filters" data-autosubmit>
+      <select name="kind">
+        <option value="">Actores y lugares</option>
+        <option value="actor" ${filters.kind === "actor" ? "selected" : ""}>Solo actores</option>
+        <option value="location" ${filters.kind === "location" ? "selected" : ""}>Solo lugares</option>
+      </select>
+      <select name="hours">${options(Object.entries(ENTITY_HOUR_LABELS), filters.hours, ([, label]) => label, ([hours]) => hours)}</select>
+      <input name="q" placeholder="Buscar por nombre o alias" value="${esc(filters.q)}">
+      <button class="btn primary">Filtrar</button>
+    </form>
+    <div class="card"><table>
+      <thead><tr><th>Nombre</th><th>Clase</th><th>Tipo</th><th>País</th><th>Eventos (periodo)</th><th>Eventos (total)</th><th>Primera vez</th><th>Última</th><th>Coordenadas</th></tr></thead>
+      <tbody>${entities.map((e) => `
+        <tr>
+          <td>${entityLink(e)}</td>
+          <td><span class="chip ${e.kind === "actor" ? "actor" : "place"}">${e.kind === "actor" ? "Actor" : "Lugar"}</span></td>
+          <td class="muted">${esc(e.subtype ?? "—")}</td>
+          <td class="muted">${esc(e.country_code ?? "—")}</td>
+          <td>${e.recent_events}</td><td>${e.total_events}</td>
+          <td class="muted">${formatTime(e.first_seen_at)}</td>
+          <td class="muted">${timeAgo(e.last_seen_at)}</td>
+          <td class="muted">${e.lat != null ? `${e.lat.toFixed(2)}, ${e.lon.toFixed(2)}${e.geo_source === "llm" ? " ≈" : ""}` : "—"}</td>
+        </tr>`).join("") || `<tr><td colspan="9" class="muted">Sin entidades. Se generan solas al enriquecer eventos.</td></tr>`}
+      </tbody>
+    </table></div>`;
+        }
+
+        // ---------- Artículos, categorías, fuentes, ajustes, briefing ----------
         async function articlesView() {
             const filters = state.articles;
             const query = new URLSearchParams({ limit: ARTICLES_PER_PAGE, offset: filters.offset, q: filters.q, category: filters.category, source: filters.source });
             const [articles, categories, sources] = await Promise.all([api(`/articles?${query}`), api("/categories"), api("/sources")]);
-            const options = (items, selected) => items.map((item) => `<option value="${item.id}" ${String(item.id) === String(selected) ? "selected" : ""}>${esc(item.name)}</option>`).join("");
 
             return `
     <h2>Artículos</h2>
-    <form class="toolbar" data-form="article-filters">
+    <form class="toolbar" data-form="article-filters" data-autosubmit>
       <input name="q" placeholder="Buscar en títulos" value="${esc(filters.q)}">
       <select name="category"><option value="">Todas las categorías</option>${options(categories, filters.category)}</select>
       <select name="source"><option value="">Todas las fuentes</option>${options(sources, filters.source)}</select>
@@ -619,22 +915,39 @@
     </table></div>`;
         }
 
-        const SETTING_LABELS = {
-            eventSimilarity: "Similitud mínima para agrupar en un evento (0.5 – 0.99)",
-            eventWindowHours: "Ventana de agrupación de eventos (horas)",
-            maxArticleAgeHours: "Antigüedad máxima de artículos al descargar (horas)",
-            retentionDays: "Retención de datos (días)",
-            schedulerEnabled: "Planificador automático activado",
-        };
+        const SETTING_GROUPS = [
+            ["Eventos", {
+                eventSimilarity: "Similitud mínima para agrupar en un evento (0.5 – 0.99)",
+                eventWindowHours: "Ventana de agrupación: sin noticias más tiempo que esto = caducado (horas)",
+                eventActiveMinHours: "Horas mínimas sin noticias antes de dejar de estar activo",
+            }],
+            ["Enriquecimiento (actores y lugares)", {
+                enrichEnabled: "Enriquecimiento con LLM activado",
+                enrichMinSources: "Medios mínimos para enriquecer un evento",
+                enrichMaxEventsPerRun: "Eventos como máximo por ciclo",
+                entityMergeSimilarity: "Similitud mínima para fusionar entidades duplicadas (0.7 – 0.99)",
+                geocodingEnabled: "Geocodificación de lugares activada",
+                entityRetentionDays: "Retención de entidades sin eventos (días)",
+            }],
+            ["Datos y planificador", {
+                maxArticleAgeHours: "Antigüedad máxima de artículos al descargar (horas)",
+                retentionDays: "Retención de artículos y eventos (días)",
+                schedulerEnabled: "Planificador automático activado",
+            }],
+        ];
+        const FLAG_SETTINGS = new Set(["schedulerEnabled", "enrichEnabled", "geocodingEnabled"]);
 
         async function settingsView() {
             const settings = await api("/settings");
-            const fields = Object.entries(SETTING_LABELS).map(([key, label]) =>
-                key === "schedulerEnabled"
-                    ? `<label class="check"><input type="checkbox" name="${key}" ${settings[key] ? "checked" : ""}> ${label}</label>`
-                    : `<label>${label}<input type="number" step="any" name="${key}" value="${settings[key]}"></label>`).join("");
+            const field = ([key, label]) => FLAG_SETTINGS.has(key)
+                ? `<label class="check"><input type="checkbox" name="${key}" ${settings[key] ? "checked" : ""}> ${label}</label>`
+                : `<label>${label}<input type="number" step="any" name="${key}" value="${settings[key]}"></label>`;
 
-            return `<h2>Ajustes</h2><form class="card form-grid" data-form="settings">${fields}<button class="btn primary">Guardar</button></form>`;
+            return `<h2>Ajustes</h2>
+    <form data-form="settings">
+      ${SETTING_GROUPS.map(([title, fields]) => `<div class="card"><h3>${title}</h3><div class="form-grid">${Object.entries(fields).map(field).join("")}</div></div>`).join("")}
+      <button class="btn primary">Guardar</button>
+    </form>`;
         }
 
         async function digestView() {
@@ -648,7 +961,9 @@
         }
 
         // ---------- Router ----------
-        const views = { overview: overviewView, events: eventsView, articles: articlesView, categories: categoriesView, sources: sourcesView, digest: digestView, settings: settingsView };
+        const views = { overview: overviewView, events: eventsView, map: mapView, entities: entitiesView, articles: articlesView, categories: categoriesView, sources: sourcesView, digest: digestView, settings: settingsView };
+        /** Código que necesita el DOM ya pintado. */
+        const hooks = { map: mapHook };
 
         async function render() {
             const requested = location.hash.slice(1);
@@ -656,6 +971,7 @@
             document.querySelectorAll("nav a").forEach((link) => link.classList.toggle("active", link.dataset.view === name));
             try {
                 $("#view").innerHTML = await views[name]();
+                await hooks[name]?.();
             } catch (error) {
                 $("#view").innerHTML = `<div class="banner">${esc(error.message)}</div>`;
             }
@@ -666,7 +982,17 @@
             async "run-pipeline"() {
                 toast("Ejecutando ciclo…");
                 const result = await api("/pipeline/run", { method: "POST" });
-                toast(result.skipped ? "Ya hay un ciclo en marcha" : `Ciclo completado: ${result.ingest.articlesAdded} artículos nuevos, ${result.processing.processed} procesados`);
+                toast(result.skipped
+                    ? "Ya hay un ciclo en marcha"
+                    : `Ciclo completado: ${result.ingest.articlesAdded} artículos nuevos, ${result.processing.processed} procesados, ${result.enrichment.enriched} eventos enriquecidos`);
+                await render();
+            },
+            async enrich() {
+                toast("Enriqueciendo eventos…");
+                const result = await api("/pipeline/enrich", { method: "POST" });
+                if (result.skipped) toast(result.skipped, true);
+                else if (result.error) toast(`Error: ${result.error}`, true);
+                else toast(`${result.enriched} eventos enriquecidos, ${result.located} lugares geocodificados`);
                 await render();
             },
             async reclassify() {
@@ -675,19 +1001,32 @@
                 await render();
             },
             async reembed() {
-                if (!confirm("Se recalcularán embeddings, eventos y categorías de todos los artículos. ¿Continuar?")) return;
+                if (!confirm("Se recalcularán embeddings, eventos, entidades y categorías de todos los artículos. ¿Continuar?")) return;
                 await api("/pipeline/reembed", { method: "POST" });
+                state.entityId = null;
                 toast("Reindexación programada: se procesará en los próximos ciclos");
                 await render();
             },
-            async "set-event-hours"(el) { state.eventHours = Number(el.dataset.hours); await render(); },
             async "toggle-event"(el, event) {
                 event.preventDefault();
                 const box = $(`#event-${el.dataset.id}`);
                 if (box.innerHTML) { box.innerHTML = ""; return; }
-                const { articles } = await api(`/events/${el.dataset.id}`);
-                box.innerHTML = articles.map((a) => `<div><a href="${safeHref(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a> · ${esc(a.source)}</div>`).join("");
+
+                const { event: detail, articles } = await api(`/events/${el.dataset.id}`);
+                const withRole = (list, cls) => list.map((e) => `${entityChip(e, cls)}<span class="muted">${esc(e.role)}</span> `).join("") || `<span class="muted">—</span>`;
+                box.innerHTML = `
+          <div><b>Actores:</b> ${withRole(detail.actors, "actor")}</div>
+          <div><b>Lugares:</b> ${withRole(detail.locations, "place")}</div>
+          <div><b>Artículos:</b></div>
+          ${articles.map((a) => `<div><a href="${safeHref(a.url)}" target="_blank" rel="noopener">${esc(a.title)}</a> · ${esc(a.source)} · ${formatTime(a.published_at)}</div>`).join("")}`;
             },
+            async "open-entity"(el, event) {
+                event.preventDefault();
+                state.entityId = Number(el.dataset.id);
+                if (location.hash === "#entities") await render();
+                else location.hash = "#entities"; // hashchange vuelve a pintar
+            },
+            async "close-entity"() { state.entityId = null; await render(); },
             async page(el) {
                 state.articles.offset = Math.max(0, state.articles.offset + Number(el.dataset.step) * ARTICLES_PER_PAGE);
                 await render();
@@ -744,6 +1083,18 @@
                 state.articles = { ...formValues(form), offset: 0 };
                 await render();
             },
+            async "event-filters"(form) {
+                const values = formValues(form);
+                state.eventHours = Number(values.hours);
+                state.eventStatus = values.status ?? "";
+                if ("type" in values) state.eventType = values.type;
+                await render();
+            },
+            async "entity-filters"(form) {
+                const values = formValues(form);
+                state.entities = { kind: values.kind, hours: Number(values.hours), q: values.q.trim() };
+                await render();
+            },
         };
 
         async function run(task) {
@@ -759,6 +1110,11 @@
             if (!form) return;
             event.preventDefault();
             run(() => forms[form.dataset.form](form));
+        });
+        // Los desplegables de los filtros se aplican al cambiar; los campos de texto, con Enter.
+        document.addEventListener("change", (event) => {
+            const form = event.target.closest("form[data-autosubmit]");
+            if (form && event.target.tagName === "SELECT") form.requestSubmit();
         });
         window.addEventListener("hashchange", render);
         render();

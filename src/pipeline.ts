@@ -7,6 +7,7 @@ import {
     saveClassification,
     type CategoryPrototype,
 } from "./categories";
+import { enrichEvents } from "./enrich";
 import { assignToEvent, loadActiveEvents, type ActiveEvent } from "./events";
 import { embedTexts, geminiConfigured } from "./gemini";
 import { ingestDueSources } from "./ingest";
@@ -34,7 +35,10 @@ interface ProcessingContext {
 
 let running = false;
 
-/** Un ciclo completo: descargar fuentes → limpiar datos antiguos → procesar artículos pendientes. */
+/**
+ * Un ciclo completo:
+ * descargar fuentes → limpiar datos antiguos → procesar artículos → enriquecer eventos (actores y lugares).
+ */
 export async function runPipeline({ force = false } = {}) {
     if (running) return { skipped: true };
     running = true;
@@ -44,9 +48,10 @@ export async function runPipeline({ force = false } = {}) {
         const ingest = await ingestDueSources(force);
         pruneOldData();
         const processing = await processPendingArticles();
+        const enrichment = await enrichEvents(); // nunca lanza: sus errores quedan en el resumen
 
-        const summary = { ingest, processing };
-        const didWork = ingest.sourcesChecked > 0 || processing.processed > 0;
+        const summary = { ingest, processing, enrichment };
+        const didWork = ingest.sourcesChecked > 0 || processing.processed > 0 || enrichment.enriched > 0;
         if (didWork) recordRun("pipeline", startedAt, true, summary);
         return summary;
     } catch (error) {
@@ -124,19 +129,31 @@ export async function reclassifyStoredArticles() {
     return { reclassified: rows.length };
 }
 
-/** Descarta embeddings, eventos y clasificaciones: el siguiente ciclo lo recalcula todo. */
+/**
+ * Descarta embeddings, eventos, entidades y clasificaciones: el siguiente ciclo lo recalcula todo.
+ * Las entidades también se borran porque sus vectores dejan de ser comparables si cambia el modelo.
+ */
 export function resetForReembedding(): void {
     db.transaction(() => {
         db.exec("DELETE FROM article_categories");
         db.exec("DELETE FROM category_vectors");
         db.exec("UPDATE articles SET embedding = NULL, event_id = NULL, status = 'pending'");
-        db.exec("DELETE FROM events");
+        db.exec("DELETE FROM events"); // arrastra event_entities
+        db.exec("DELETE FROM entities"); // arrastra entity_aliases
     })();
 }
 
 function pruneOldData(): void {
-    const cutoff = Date.now() - getSettings().retentionDays * DAY_MS;
+    const settings = getSettings();
+    const cutoff = Date.now() - settings.retentionDays * DAY_MS;
     db.query("DELETE FROM articles WHERE published_at < ?").run(cutoff);
-    db.query("DELETE FROM events WHERE last_seen_at < ?").run(cutoff);
+    db.query("DELETE FROM events WHERE last_seen_at < ?").run(cutoff); // arrastra event_entities
     db.query("DELETE FROM runs WHERE started_at < ?").run(cutoff);
+
+    // Las entidades viven más que los eventos: solo se borran las huérfanas y antiguas.
+    db.query(
+        `DELETE FROM entities
+     WHERE last_seen_at < ?
+       AND NOT EXISTS (SELECT 1 FROM event_entities ee WHERE ee.entity_id = entities.id)`,
+    ).run(Date.now() - settings.entityRetentionDays * DAY_MS);
 }
