@@ -27,7 +27,7 @@ import {
 } from "./queries";
 import { listRuns } from "./runs";
 import { categoryPatchSchema, categorySchema, settingsSchema, sourcePatchSchema, sourceSchema } from "./schemas";
-import { seedDefaults } from "./seed";
+import { seedDefaults, seedMissingSources } from "./seed";
 import { startScheduler } from "./scheduler";
 import { getSettings, updateSettings } from "./settings";
 import { createSource, deleteSource, getSource, listSources, updateSource } from "./sources";
@@ -115,6 +115,7 @@ api.get("/articles", (c) =>
 // Fuentes
 api.get("/sources", (c) => c.json(listSources()));
 api.post("/sources", async (c) => c.json(createSource(sourceSchema.parse(await c.req.json())), 201));
+api.post("/sources/defaults", (c) => c.json({ added: seedMissingSources() }));
 api.patch("/sources/:id", async (c) => {
   const source = updateSource(idParam(c), sourcePatchSchema.parse(await c.req.json()));
   return c.json(source ?? notFound("Fuente"));

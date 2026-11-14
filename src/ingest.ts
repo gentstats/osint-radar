@@ -6,7 +6,7 @@ import { listSources, markSourceFetched } from "./sources";
 import type { RawArticle, Source } from "./types";
 import { canonicalUrl, errorMessage, stripHtml } from "./utils";
 
-const GDELT_PAUSE_MS = 5_500; // GDELT permite ~1 petición cada 5 s
+const GDELT_PAUSE_MS = 6_000; // GDELT permite ~1 petición cada 5 s; dejamos margen de seguridad
 const xmlParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
 
 // fast-xml-parser devuelve estructuras dinámicas (RSS, Atom y RDF difieren)
@@ -17,6 +17,27 @@ export interface IngestSummary {
     articlesAdded: number;
 }
 
+// Cola global para serializar TODAS las peticiones a GDELT (planificador y descargas manuales).
+let lastGdeltAt = 0;
+let gdeltQueue: Promise<void> = Promise.resolve();
+
+async function withGdeltRateLimit<T>(fn: () => Promise<T>): Promise<T> {
+    const run = gdeltQueue.then(async () => {
+        const wait = lastGdeltAt + GDELT_PAUSE_MS - Date.now();
+        if (wait > 0) await Bun.sleep(wait);
+        try {
+            return await fn();
+        } finally {
+            lastGdeltAt = Date.now();
+        }
+    });
+    gdeltQueue = run.then(
+        () => undefined,
+        () => undefined,
+    );
+    return run;
+}
+
 // ---------- Orquestación ----------
 
 export async function ingestDueSources(force = false): Promise<IngestSummary> {
@@ -25,7 +46,6 @@ export async function ingestDueSources(force = false): Promise<IngestSummary> {
 
     for (const source of sources) {
         articlesAdded += await ingestSource(source);
-        if (source.type === "gdelt") await Bun.sleep(GDELT_PAUSE_MS);
     }
     return { sourcesChecked: sources.length, articlesAdded };
 }
@@ -81,7 +101,11 @@ const fetchArticles = (source: Source): Promise<RawArticle[]> =>
 async function fetchText(url: string): Promise<string> {
     if (!/^https?:\/\//i.test(url)) throw new Error("URL no válida");
     const response = await fetch(url, {
-        headers: { "user-agent": "OsintRadar/1.0" },
+        headers: {
+            "user-agent": "Mozilla/5.0 (compatible; OsintRadar/1.0)",
+            accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, application/json, text/plain, */*;q=0.8",
+            "accept-language": "en-US,en;q=0.9,es;q=0.8",
+        },
         signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -106,12 +130,28 @@ async function fetchGdeltArticles(query: string): Promise<RawArticle[]> {
         timespan: "2h",
         sort: "DateDesc",
     });
-    const text = await fetchText(`https://api.gdeltproject.org/api/v2/doc/doc?${params}`);
-    const { articles = [] } = JSON.parse(text) as {
-        articles?: { title: string; url: string; seendate: string }[];
-    };
+    const url = `https://api.gdeltproject.org/api/v2/doc/doc?${params}`;
 
-    return articles.map((article) => ({
+    const text = await withGdeltRateLimit(async () => {
+        try {
+            return await fetchText(url);
+        } catch (error) {
+            if (errorMessage(error).includes("HTTP 429")) {
+                await Bun.sleep(GDELT_PAUSE_MS + 500);
+                return fetchText(url);
+            }
+            throw error;
+        }
+    });
+
+    let data: { articles?: { title: string; url: string; seendate: string }[] };
+    try {
+        data = JSON.parse(text);
+    } catch {
+        throw new Error(`GDELT devolvió respuesta no JSON: ${text.slice(0, 120)}`);
+    }
+
+    return (data.articles ?? []).map((article) => ({
         title: stripHtml(article.title),
         url: article.url,
         summary: "",

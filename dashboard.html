@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 
 <head>
@@ -350,6 +350,27 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+
+        .source-url {
+            font-size: 12px;
+            color: var(--muted);
+            max-width: 340px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .actions-cell {
+            display: flex;
+            gap: 6px;
+            flex-wrap: nowrap;
+            white-space: nowrap;
+        }
+
+        .edit-row td {
+            background: var(--panel-2);
+            padding: 14px 16px;
         }
 
         .bars {
@@ -728,6 +749,8 @@
             articles: { q: "", category: "", source: "", offset: 0 },
             entities: { kind: "", hours: 168, q: "" },
             entityId: null,
+            sources: { q: "", type: "", onlyErrors: false },
+            editingSourceId: null,
         };
         const ARTICLES_PER_PAGE = 50;
         const HOUR_LABELS = { 24: "Últimas 24 h", 48: "Últimas 48 h", 168: "Últimos 7 días", 720: "Últimos 30 días" };
@@ -1273,31 +1296,83 @@
     <h3>Existentes</h3>${categories.map(categoryForm).join("")}`;
         }
 
+        const sourceEditRow = (source) => `
+  <tr class="edit-row">
+    <td colspan="8">
+      <form class="form-grid" data-form="edit-source" data-id="${source.id}">
+        <label>Nombre<input name="name" value="${esc(source.name)}" required maxlength="100"></label>
+        <label>Tipo<select name="type">
+          <option value="rss" ${source.type === "rss" ? "selected" : ""}>RSS / Atom</option>
+          <option value="gdelt" ${source.type === "gdelt" ? "selected" : ""}>GDELT (consulta)</option>
+        </select></label>
+        <label>Cada (min)<input name="interval_minutes" type="number" min="5" max="1440" value="${source.interval_minutes}" required></label>
+        <label class="check"><input type="checkbox" name="enabled" ${source.enabled ? "checked" : ""}> Activa</label>
+        <label style="grid-column:1 / -1">URL del feed o consulta GDELT<input name="url" value="${esc(source.url)}" required maxlength="1000"></label>
+        <div class="row">
+          <button class="btn primary">Guardar cambios</button>
+          <button type="button" class="btn" data-action="cancel-edit-source">Cancelar</button>
+        </div>
+      </form>
+    </td>
+  </tr>`;
+
         async function sourcesView() {
             const sources = await api("/sources");
+            const filters = state.sources;
+            const visible = sources.filter((source) => {
+                if (filters.type && source.type !== filters.type) return false;
+                if (filters.onlyErrors && !source.last_error) return false;
+                if (filters.q) {
+                    const needle = filters.q.toLowerCase();
+                    if (!source.name.toLowerCase().includes(needle) && !source.url.toLowerCase().includes(needle)) return false;
+                }
+                return true;
+            });
+            const failingCount = sources.filter((s) => s.enabled && s.last_error).length;
+
             return `
-    <h2>Fuentes</h2>
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="margin:0">Fuentes <span class="muted" style="font-size:14px;font-weight:400">(${sources.length}${failingCount ? ` · <span class="down">${failingCount} con error</span>` : ""})</span></h2>
+      <button class="btn" data-action="seed-sources">Añadir fuentes recomendadas</button>
+    </div>
     <form class="card form-grid" data-form="source">
-      <label>Nombre<input name="name" required></label>
+      <label>Nombre<input name="name" placeholder="p. ej. The Record" required maxlength="100"></label>
       <label>Tipo<select name="type"><option value="rss">RSS / Atom</option><option value="gdelt">GDELT (consulta)</option></select></label>
-      <label>URL o consulta GDELT<input name="url" required></label>
-      <label>Cada (min)<input name="interval_minutes" type="number" min="5" value="30"></label>
+      <label>URL o consulta GDELT<input name="url" placeholder="https://… o (keyword1 OR keyword2) sourcelang:english" required maxlength="1000"></label>
+      <label>Cada (min)<input name="interval_minutes" type="number" min="5" max="1440" value="30" required></label>
       <button class="btn primary">Añadir fuente</button>
+    </form>
+    <form class="toolbar" data-form="source-filters" data-autosubmit>
+      <input name="q" placeholder="Buscar por nombre o URL" value="${esc(filters.q)}">
+      <select name="type">
+        <option value="">Todos los tipos</option>
+        <option value="rss" ${filters.type === "rss" ? "selected" : ""}>Solo RSS / Atom</option>
+        <option value="gdelt" ${filters.type === "gdelt" ? "selected" : ""}>Solo GDELT</option>
+      </select>
+      <label class="check"><input type="checkbox" name="onlyErrors" ${filters.onlyErrors ? "checked" : ""}> Solo con error</label>
+      <button class="btn">Filtrar</button>
     </form>
     <div class="card"><table>
       <thead><tr><th>On</th><th>Fuente</th><th>Tipo</th><th>Cada</th><th>Última descarga</th><th>Artículos</th><th>Error</th><th></th></tr></thead>
-      <tbody>${sources.map((source) => `
+      <tbody>${visible.map((source) => `
         <tr>
           <td><input type="checkbox" data-action="toggle-source" data-id="${source.id}" ${source.enabled ? "checked" : ""}></td>
-          <td title="${esc(source.url)}">${esc(source.name)}</td>
+          <td>
+            <div>${esc(source.name)}</div>
+            <div class="source-url" title="${esc(source.url)}">${esc(source.url)}</div>
+          </td>
           <td class="muted">${source.type}</td>
           <td>${source.interval_minutes} min</td>
           <td class="muted">${timeAgo(source.last_fetched_at)}</td>
           <td>${source.articles_total}</td>
           <td class="error" title="${esc(source.last_error)}">${esc(source.last_error)}</td>
-          <td><button class="btn" data-action="fetch-source" data-id="${source.id}">Descargar</button>
-              <button class="btn danger" data-action="delete-source" data-id="${source.id}">×</button></td>
-        </tr>`).join("")}
+          <td><div class="actions-cell">
+              <button class="btn" data-action="edit-source" data-id="${source.id}">${state.editingSourceId === source.id ? "Cerrar" : "Editar"}</button>
+              <button class="btn" data-action="fetch-source" data-id="${source.id}">Descargar</button>
+              <button class="btn danger" data-action="delete-source" data-id="${source.id}">×</button>
+          </div></td>
+        </tr>
+        ${state.editingSourceId === source.id ? sourceEditRow(source) : ""}`).join("") || `<tr><td colspan="8" class="muted">Sin fuentes que coincidan con el filtro</td></tr>`}
       </tbody>
     </table></div>`;
         }
@@ -1428,13 +1503,29 @@
                 await render();
             },
             async "toggle-source"(el) { await api(`/sources/${el.dataset.id}`, { method: "PATCH", body: { enabled: el.checked } }); },
+            async "edit-source"(el) {
+                const id = Number(el.dataset.id);
+                state.editingSourceId = state.editingSourceId === id ? null : id;
+                await render();
+            },
+            async "cancel-edit-source"() {
+                state.editingSourceId = null;
+                await render();
+            },
+            async "seed-sources"() {
+                const { added } = await api("/sources/defaults", { method: "POST" });
+                toast(added ? `${added} fuentes nuevas añadidas` : "Ya tienes todas las fuentes recomendadas");
+                await render();
+            },
             async "fetch-source"(el) {
+                toast("Descargando fuente…");
                 const { added } = await api(`/sources/${el.dataset.id}/fetch`, { method: "POST" });
                 toast(`${added} artículos nuevos`);
                 await render();
             },
             async "delete-source"(el) {
                 if (!confirm("¿Eliminar la fuente y sus artículos?")) return;
+                if (state.editingSourceId === Number(el.dataset.id)) state.editingSourceId = null;
                 await api(`/sources/${el.dataset.id}`, { method: "DELETE" });
                 await render();
             },
@@ -1464,6 +1555,18 @@
             async source(form) {
                 await api("/sources", { method: "POST", body: formValues(form) });
                 toast("Fuente añadida");
+                await render();
+            },
+            async "edit-source"(form) {
+                const id = form.dataset.id;
+                await api(`/sources/${id}`, { method: "PATCH", body: formValues(form) });
+                state.editingSourceId = null;
+                toast("Fuente actualizada");
+                await render();
+            },
+            async "source-filters"(form) {
+                const values = formValues(form);
+                state.sources = { q: values.q.trim(), type: values.type, onlyErrors: values.onlyErrors };
                 await render();
             },
             async settings(form) {
@@ -1504,10 +1607,10 @@
             event.preventDefault();
             run(() => forms[form.dataset.form](form));
         });
-        // Los desplegables de los filtros se aplican al cambiar; los campos de texto, con Enter.
+        // Los desplegables y checkboxes de los filtros se aplican al cambiar; los campos de texto, con Enter.
         document.addEventListener("change", (event) => {
             const form = event.target.closest("form[data-autosubmit]");
-            if (form && event.target.tagName === "SELECT") form.requestSubmit();
+            if (form && (event.target.tagName === "SELECT" || event.target.type === "checkbox")) form.requestSubmit();
         });
         window.addEventListener("hashchange", render);
         render();

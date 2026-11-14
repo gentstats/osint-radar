@@ -16,7 +16,8 @@ export function createSource(input: SourceInput): Source {
 }
 
 export function updateSource(id: number, patch: SourcePatch): Source | null {
-    updateRow("sources", id, patch);
+    const clearError = patch.url !== undefined || patch.type !== undefined ? { last_error: null } : {};
+    updateRow("sources", id, { ...patch, ...clearError });
     return getSource(id);
 }
 
