@@ -5,9 +5,11 @@
     "scripts": {
         "dev": "bun --watch src/index.ts",
         "start": "bun src/index.ts",
-        "dump": "bun scripts/dump.ts"
+        "dump": "bun scripts/dump.ts",
+        "brief": "bun scripts/codebrief.ts"
     },
     "dependencies": {
+        "@google/genai": "^3.3.0",
         "fast-xml-parser": "^5.12.1",
         "hono": "^4.13.18",
         "zod": "^4.6.7"
