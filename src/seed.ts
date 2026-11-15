@@ -4,7 +4,7 @@ import { createSource } from "./sources";
 
 // Algunas URLs pueden cambiar con el tiempo: el dashboard muestra el error de cada fuente y permite editarlas.
 const rss = (name: string, url: string) => ({ name, type: "rss" as const, url });
-const gdelt = (name: string, query: string) => ({ name, type: "gdelt" as const, url: query });
+// const gdelt = (name: string, query: string) => ({ name, type: "gdelt" as const, url: query });
 
 const DEFAULT_SOURCES = [
     // Noticias globales y geopolítica regional
@@ -17,17 +17,35 @@ const DEFAULT_SOURCES = [
     rss("France 24 ES", "https://www.france24.com/es/rss"),
     rss("EL PAÍS Internacional", "https://elpais.com/rss/internacional/portada.xml"),
     rss("POLITICO Europe", "https://www.politico.eu/feed/"),
+    rss("Parlamento Europeo", "https://www.europarl.europa.eu/rss/doc/press-releases/en.xml"),
     rss("Middle East Eye", "https://www.middleeasteye.net/rss"),
     rss("The Diplomat", "https://thediplomat.com/feed/"),
     rss("South China Morning Post", "https://www.scmp.com/rss/91/feed"),
+    rss("The Times of India", "https://timesofindia.indiatimes.com/rssfeedstopstories.cms"),
+    rss("ABC Australia", "https://www.abc.net.au/news/feed/45910/rss.xml"),
+    rss("The Japan Times", "https://www.japantimes.co.jp/feed/"),
+    rss("ASPI Strategist (Indopacífico)", "https://www.aspistrategist.org.au/feed/"),
     rss("The Moscow Times", "https://www.themoscowtimes.com/rss/news"),
     rss("Meduza (EN)", "https://meduza.io/rss/en/all"),
     rss("Euromaidan Press", "https://euromaidanpress.com/feed/"),
     rss("Africanews", "https://www.africanews.com/feed/rss"),
     rss("MercoPress", "https://en.mercopress.com/rss/"),
 
+    // América Latina
+    rss("Clarín (Argentina)", "https://www.clarin.com/rss/lo-ultimo/"),
+    rss("Folha de S.Paulo (Brasil)", "https://feeds.folha.uol.com.br/emcimadahora/rss091.xml"),
+    rss("Infobae América", "https://www.infobae.com/arc/outboundfeeds/rss/"),
+    rss("El Tiempo (Colombia)", "https://www.eltiempo.com/rss/mundo_latinoamerica.xml"),
+    rss("La Silla Vacía (Colombia)", "https://www.lasillavacia.com/rss"),
+    rss("Primicias (Ecuador)", "https://www.primicias.ec/feed/"),
+    rss("InSight Crime (crimen organizado)", "https://insightcrime.org/feed/"),
+    rss("Caracas Chronicles (Venezuela)", "https://www.caracaschronicles.com/feed/"),
+    rss("Efecto Cocuyo (Venezuela)", "https://efectococuyo.com/feed/"),
+    rss("Mexico News Daily", "https://mexiconewsdaily.com/feed/"),
+
     // Crisis humanitarias, organismos y desastres
     rss("UN News", "https://news.un.org/feed/subscribe/en/news/all/rss.xml"),
+    rss("ReliefWeb", "https://reliefweb.int/updates/rss.xml"),
     rss("GDACS (Desastres ONU/UE)", "https://www.gdacs.org/xml/rss.xml"),
     rss("WHO News", "https://www.who.int/rss-feeds/news-english.xml"),
     rss("ICRC Law & Policy", "https://blogs.icrc.org/law-and-policy/feed/"),
@@ -60,13 +78,33 @@ const DEFAULT_SOURCES = [
     rss("Semiconductor Engineering", "https://semiengineering.com/feed/"),
     rss("SpaceNews", "https://spacenews.com/feed/"),
 
+    // Economía, bancos centrales, regulación y estadística
+    rss("Banco Central Europeo – Comunicados", "https://www.ecb.europa.eu/rss/press.html"),
+    rss("BCE – Publicaciones", "https://www.ecb.europa.eu/rss/pub.html"),
+    rss("Reserva Federal – Política monetaria", "https://www.federalreserve.gov/feeds/press_monetary.xml"),
+    rss("Banco de Inglaterra", "https://www.bankofengland.co.uk/rss/news"),
+    rss("Eurostat – Noticias estadísticas", "https://ec.europa.eu/eurostat/cache/RSS/rss_estat_news.xml"),
+    rss("BLS – Estadísticas laborales EE. UU.", "https://www.bls.gov/feed/bls_latest.rss"),
+    rss("ESMA – Regulación financiera europea", "https://www.esma.europa.eu/rss.xml"),
+
     // Energía, materias primas y rutas marítimas
     rss("OilPrice", "https://oilprice.com/rss/main"),
     rss("MINING.com", "https://www.mining.com/feed/"),
     rss("EIA Today in Energy", "https://www.eia.gov/rss/todayinenergy.xml"),
+    rss("IRENA (energía renovable)", "https://www.irena.org/rssfeed"),
     rss("gCaptain", "https://gcaptain.com/feed/"),
     rss("The Maritime Executive", "https://maritime-executive.com/articles.rss"),
     rss("Splash247", "https://splash247.com/feed/"),
+
+    // Clima, observación terrestre y medioambiente
+    rss("Carbon Brief", "https://www.carbonbrief.org/feed"),
+    rss("Inside Climate News", "https://insideclimatenews.org/feed/"),
+    rss("NASA Earth Observatory", "https://earthobservatory.nasa.gov/feeds/earth-observatory.rss"),
+    rss("NOAA", "https://www.noaa.gov/rss.xml"),
+    rss("Copernicus Atmosphere", "https://atmosphere.copernicus.eu/rss"),
+    rss("Copernicus Data Space", "https://dataspace.copernicus.eu/stay-informed/RSSfeeds"),
+    rss("European Environment Agency", "https://www.eea.europa.eu/en/newsroom/rss-feeds"),
+    rss("USGS (geología y recursos naturales)", "https://www.usgs.gov/rss/news"),
 
     // Ciencia
     rss("Nature", "https://www.nature.com/nature.rss"),
@@ -75,9 +113,9 @@ const DEFAULT_SOURCES = [
     rss("ESA Top News", "https://www.esa.int/rssfeed/TopNews"),
 
     // GDELT
-    gdelt("GDELT · Conflicto y defensa", '(missile OR airstrike OR "air defense" OR drone) sourcelang:english'),
-    gdelt("GDELT · Ciber", '(cyberattack OR ransomware OR "data breach") sourcelang:english'),
-    gdelt("GDELT · Energía y rutas marítimas", '("Strait of Hormuz" OR "Red Sea" OR "oil tanker" OR "rare earths" OR OPEC) sourcelang:english'),
+    // gdelt("GDELT · Conflicto y defensa", '(missile OR airstrike OR "air defense" OR drone) sourcelang:english'),
+    // gdelt("GDELT · Ciber", '(cyberattack OR ransomware OR "data breach") sourcelang:english'),
+    // gdelt("GDELT · Energía y rutas marítimas", '("Strait of Hormuz" OR "Red Sea" OR "oil tanker" OR "rare earths" OR OPEC) sourcelang:english'),
 ];
 
 const DEFAULT_CATEGORIES = [
