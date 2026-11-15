@@ -45,8 +45,8 @@ Las bases de datos anteriores se migran solas al arrancar (se añaden las column
 | `ADMIN_TOKEN` | *(vacío)* | Protege la API. Solo letras, números y `._~+/-`. Vacío = API abierta |
 | `GEMINI_API_KEY` | *(vacío)* | Sin ella se descargan artículos pero no se clasifican ni enriquecen |
 | `EMBEDDING_MODEL` | `gemini-embedding-001` | Modelo de embeddings |
-| `DIGEST_MODEL` | `gemini-2.5-flash` | Modelo del briefing |
-| `EXTRACTION_MODEL` | `gemini-2.5-flash` | Modelo que extrae actores, lugares y resúmenes |
+| `DIGEST_MODEL` | `gemini-3.5-flash` | Modelo del briefing |
+| `EXTRACTION_MODEL` | `gemini-3.5-flash` | Modelo que extrae actores, lugares y resúmenes |
 | `MAPBOX_TOKEN` | *(vacío)* | Token público de Mapbox (`pk.…`) para la vista Mapa |
 
 ## Cómo funciona

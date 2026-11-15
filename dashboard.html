@@ -120,6 +120,19 @@
             margin-bottom: 16px;
         }
 
+        .card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .card-head h3 {
+            margin: 0;
+        }
+
         .grid-2 {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
@@ -158,6 +171,10 @@
             margin-bottom: 16px;
         }
 
+        .toolbar.compact {
+            margin-bottom: 10px;
+        }
+
         .banner {
             background: #3a2c0a;
             border: 1px solid var(--amber);
@@ -165,6 +182,16 @@
             border-radius: 10px;
             padding: 10px 14px;
             margin-bottom: 16px;
+        }
+
+        .table-wrap {
+            overflow: auto;
+            max-height: 70vh;
+            border-radius: 8px;
+        }
+
+        .table-wrap.short {
+            max-height: 360px;
         }
 
         table {
@@ -177,13 +204,66 @@
             color: var(--muted);
             font-size: 12px;
             font-weight: 600;
-            padding: 6px 8px;
+            padding: 8px;
+            position: sticky;
+            top: 0;
+            background: var(--panel);
+            z-index: 2;
+            box-shadow: inset 0 -1px 0 var(--line);
+            white-space: nowrap;
+        }
+
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        th.sortable:hover {
+            color: var(--text);
+        }
+
+        th.sortable .sort-ind {
+            display: inline-block;
+            margin-left: 4px;
+            font-size: 10px;
+            opacity: .45;
+        }
+
+        th.sortable[aria-sort="ascending"] .sort-ind,
+        th.sortable[aria-sort="descending"] .sort-ind {
+            opacity: 1;
+            color: var(--green);
         }
 
         td {
             padding: 8px;
             border-top: 1px solid var(--line);
             vertical-align: top;
+        }
+
+        tbody tr {
+            content-visibility: auto;
+            contain-intrinsic-size: 42px;
+        }
+
+        .table-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding-top: 12px;
+            margin-top: 8px;
+            border-top: 1px solid var(--line);
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .table-footer-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
         }
 
         input,
@@ -195,6 +275,12 @@
             border-radius: 8px;
             padding: 8px 10px;
             font: inherit;
+        }
+
+        input.sm,
+        select.sm {
+            padding: 5px 8px;
+            font-size: 12px;
         }
 
         input:focus,
@@ -248,6 +334,11 @@
             font: inherit;
             font-weight: 600;
             cursor: pointer;
+        }
+
+        .btn.sm {
+            padding: 4px 11px;
+            font-size: 12px;
         }
 
         .btn:hover {
@@ -540,7 +631,6 @@
             border-left-color: var(--panel);
         }
 
-        /* Controles y atribución de Mapbox en modo oscuro y accesibles */
         #event-map .mapboxgl-ctrl-group {
             background: var(--panel);
             border: 1px solid var(--line);
@@ -713,6 +803,14 @@
             setTimeout(() => (box.style.display = "none"), 4000);
         }
 
+        function debounce(fn, delay = 160) {
+            let timer;
+            return (...args) => {
+                clearTimeout(timer);
+                timer = setTimeout(() => fn(...args), delay);
+            };
+        }
+
         // ---------- API ----------
         let token = localStorage.getItem("adminToken") ?? "";
 
@@ -746,16 +844,37 @@
             eventHours: 24,
             eventStatus: "",
             eventType: "",
-            articles: { q: "", category: "", source: "", offset: 0 },
-            entities: { kind: "", hours: 168, q: "" },
+            eventsClient: { q: "", category: "", enriched: "", minSources: 0 },
+            articles: { q: "", category: "", source: "", status: "", offset: 0, limit: 100 },
+            entities: { kind: "", hours: 168, q: "", subtype: "", country: "", hasCoords: "", minEvents: 0 },
             entityId: null,
-            sources: { q: "", type: "", onlyErrors: false },
+            sources: { q: "", type: "", onlyErrors: false, enabled: "" },
             editingSourceId: null,
+            overview: { trendQ: "", onlyAnomalies: false, runQ: "", runStatus: "" },
+            sorts: {
+                "overview-actors": { key: "recent_events", dir: "desc" },
+                "overview-places": { key: "recent_events", dir: "desc" },
+                "overview-trends": { key: "zScore", dir: "desc" },
+                "overview-runs": { key: "started_at", dir: "desc" },
+                "events": { key: "first_seen_at", dir: "desc" },
+                "entities": { key: "recent_events", dir: "desc" },
+                "entity-events": { key: "first_seen_at", dir: "desc" },
+                "articles": { key: "published_at", dir: "desc" },
+                "sources": { key: "articles_total", dir: "desc" },
+            },
+            pages: {
+                "events": { page: 0, pageSize: 100 },
+                "entities": { page: 0, pageSize: 100 },
+                "sources": { page: 0, pageSize: 100 },
+                "overview-trends": { page: 0, pageSize: 50 },
+                "overview-runs": { page: 0, pageSize: 50 },
+            },
         };
-        const ARTICLES_PER_PAGE = 50;
+
         const HOUR_LABELS = { 24: "Últimas 24 h", 48: "Últimas 48 h", 168: "Últimos 7 días", 720: "Últimos 30 días" };
         const ENTITY_HOUR_LABELS = { 24: "24 h", 168: "7 días", 720: "30 días", 0: "Todo el histórico" };
         const STATUS_LABELS = { active: "Activo", cooling: "Enfriándose", expired: "Caducado" };
+        const STATUS_RANK = { active: 3, cooling: 2, expired: 1 };
 
         const statusChip = (status) => `<span class="chip status-${esc(status)}">${esc(STATUS_LABELS[status] ?? status)}</span>`;
         const entityTitle = (e) => [e.role, e.subtype, e.country_code, e.lat != null ? `${e.lat.toFixed(2)}, ${e.lon.toFixed(2)}` : ""].filter(Boolean).join(" · ");
@@ -765,29 +884,214 @@
         const options = (items, selected, label = (item) => item.name, value = (item) => item.id) =>
             items.map((item) => `<option value="${esc(value(item))}" ${String(value(item)) === String(selected) ? "selected" : ""}>${esc(label(item))}</option>`).join("");
 
+        // ---------- Motor de tablas: ordenación, paginación y renderizado progresivo ----------
+        const collator = new Intl.Collator("es", { sensitivity: "base", numeric: true });
+        const tableRegistry = new Map();
+        const tableObservers = new Map();
+        const CHUNK_SIZE = 100;
+
+        function compareValues(a, b, type, dir) {
+            const mul = dir === "asc" ? 1 : -1;
+            const aEmpty = a === null || a === undefined || a === "" || (typeof a === "number" && Number.isNaN(a));
+            const bEmpty = b === null || b === undefined || b === "" || (typeof b === "number" && Number.isNaN(b));
+            if (aEmpty && bEmpty) return 0;
+            if (aEmpty) return 1;
+            if (bEmpty) return -1;
+            if (type === "number" || type === "date") return (Number(a) - Number(b)) * mul;
+            if (type === "boolean") return ((a ? 1 : 0) - (b ? 1 : 0)) * mul;
+            return collator.compare(String(a), String(b)) * mul;
+        }
+
+        function clearTableObservers() {
+            for (const observer of tableObservers.values()) observer.disconnect();
+            tableObservers.clear();
+        }
+
+        function disconnectTableObserver(tableId) {
+            const observer = tableObservers.get(tableId);
+            if (observer) {
+                observer.disconnect();
+                tableObservers.delete(tableId);
+            }
+        }
+
+        function tableShell(tableId, columns, { wrapClass = "" } = {}) {
+            const sort = state.sorts[tableId];
+            return `
+        <div class="table-wrap ${wrapClass}" id="wrap-${tableId}">
+          <table>
+            <thead>
+              <tr>${columns.map((col) => {
+                if (!col.sortKey) return `<th>${esc(col.label)}</th>`;
+                const active = sort && sort.key === col.sortKey;
+                const ariaSort = active ? (sort.dir === "asc" ? "ascending" : "descending") : "none";
+                const arrow = active ? (sort.dir === "asc" ? "▲" : "▼") : "↕";
+                return `<th class="sortable" data-sort-table="${tableId}" data-sort-key="${col.sortKey}" aria-sort="${ariaSort}" title="Ordenar por ${esc(col.label)}">${esc(col.label)}<span class="sort-ind">${arrow}</span></th>`;
+            }).join("")}</tr>
+            </thead>
+            <tbody id="tbody-${tableId}"></tbody>
+          </table>
+        </div>
+        <div id="footer-${tableId}"></div>`;
+        }
+
+        function updateSortHeaders(tableId) {
+            const sort = state.sorts[tableId];
+            document.querySelectorAll(`th[data-sort-table="${tableId}"]`).forEach((th) => {
+                const active = sort && sort.key === th.dataset.sortKey;
+                th.setAttribute("aria-sort", active ? (sort.dir === "asc" ? "ascending" : "descending") : "none");
+                const ind = th.querySelector(".sort-ind");
+                if (ind) ind.textContent = active ? (sort.dir === "asc" ? "▲" : "▼") : "↕";
+            });
+        }
+
+        function mountTable(tableId, config) {
+            tableRegistry.set(tableId, config);
+            renderTable(tableId);
+        }
+
+        function renderTable(tableId) {
+            const config = tableRegistry.get(tableId);
+            const tbody = $(`#tbody-${tableId}`);
+            if (!config || !tbody) return;
+
+            disconnectTableObserver(tableId);
+            updateSortHeaders(tableId);
+
+            const { columns, rows, filterFn, rowHtml, emptyHtml, disablePagination = false, colSpan = columns.length } = config;
+            const filtered = filterFn ? rows.filter(filterFn) : rows;
+
+            // Ordenar
+            const sort = state.sorts[tableId];
+            let sorted = filtered;
+            if (sort) {
+                const col = columns.find((c) => c.sortKey === sort.key);
+                if (col) {
+                    const getVal = col.getValue ?? ((r) => r[col.sortKey]);
+                    const type = col.type ?? "string";
+                    sorted = [...filtered].sort((a, b) => compareValues(getVal(a), getVal(b), type, sort.dir));
+                }
+            }
+
+            // Paginar en cliente (o mostrar todo con carga progresiva por bloques)
+            let visibleRows = sorted;
+            let pageState = state.pages[tableId];
+            let totalPages = 1;
+            let startIdx = 0;
+
+            if (!disablePagination && pageState) {
+                const size = pageState.pageSize;
+                if (size > 0 && Number.isFinite(size)) {
+                    totalPages = Math.max(1, Math.ceil(sorted.length / size));
+                    if (pageState.page >= totalPages) pageState.page = totalPages - 1;
+                    if (pageState.page < 0) pageState.page = 0;
+                    startIdx = pageState.page * size;
+                    visibleRows = sorted.slice(startIdx, startIdx + size);
+                } else {
+                    pageState.page = 0;
+                }
+            }
+
+            if (!visibleRows.length) {
+                tbody.innerHTML = emptyHtml ?? `<tr><td colspan="${colSpan}" class="muted">Sin resultados</td></tr>`;
+            } else if (visibleRows.length <= CHUNK_SIZE) {
+                tbody.innerHTML = visibleRows.map(rowHtml).join("");
+            } else {
+                // Renderizado progresivo por bloques para grandes volúmenes sin bloquear el hilo principal
+                let rendered = CHUNK_SIZE;
+                tbody.innerHTML = visibleRows.slice(0, rendered).map(rowHtml).join("") +
+                    `<tr id="sentinel-${tableId}"><td colspan="${colSpan}" class="muted">Cargando más filas (${rendered}/${visibleRows.length})…</td></tr>`;
+
+                const sentinel = $(`#sentinel-${tableId}`);
+                const wrap = $(`#wrap-${tableId}`);
+                if (sentinel && "IntersectionObserver" in window) {
+                    const observer = new IntersectionObserver((entries) => {
+                        if (!entries.some((e) => e.isIntersecting)) return;
+                        const next = Math.min(visibleRows.length, rendered + CHUNK_SIZE);
+                        const html = visibleRows.slice(rendered, next).map(rowHtml).join("");
+                        sentinel.insertAdjacentHTML("beforebegin", html);
+                        rendered = next;
+                        if (rendered >= visibleRows.length) {
+                            observer.disconnect();
+                            tableObservers.delete(tableId);
+                            sentinel.remove();
+                        } else {
+                            sentinel.firstElementChild.textContent = `Cargando más filas (${rendered}/${visibleRows.length})…`;
+                        }
+                    }, { root: wrap, rootMargin: "240px" });
+                    observer.observe(sentinel);
+                    tableObservers.set(tableId, observer);
+                } else if (sentinel) {
+                    sentinel.remove();
+                    tbody.innerHTML = visibleRows.map(rowHtml).join("");
+                }
+            }
+
+            // Pie de tabla
+            const footer = $(`#footer-${tableId}`);
+            if (footer && !disablePagination && pageState) {
+                const total = sorted.length;
+                const showingEnd = Math.min(total, startIdx + visibleRows.length);
+                const size = pageState.pageSize;
+                const pageSizes = [50, 100, 250, 500, 0];
+                footer.innerHTML = `
+          <div class="table-footer">
+            <div>${total === 0 ? "0 resultados" : `Mostrando <b>${startIdx + 1}–${showingEnd}</b> de <b>${total}</b>${total !== rows.length ? ` (filtrados de ${rows.length})` : ""}`}</div>
+            <div class="table-footer-controls">
+              <label style="flex-direction:row;align-items:center;gap:6px">Filas:
+                <select class="sm" data-table-pagesize="${tableId}">
+                  ${pageSizes.map((s) => `<option value="${s}" ${s === size ? "selected" : ""}>${s === 0 ? "Todos" : s}</option>`).join("")}
+                </select>
+              </label>
+              ${size > 0 && totalPages > 1 ? `
+                <button class="btn sm" data-table-page="${tableId}" data-step="-1" ${pageState.page === 0 ? "disabled" : ""}>← Anterior</button>
+                <span>Página ${pageState.page + 1} / ${totalPages}</span>
+                <button class="btn sm" data-table-page="${tableId}" data-step="1" ${pageState.page >= totalPages - 1 ? "disabled" : ""}>Siguiente →</button>
+              ` : ""}
+            </div>
+          </div>`;
+            } else if (footer && sorted.length > 0) {
+                footer.innerHTML = `<div class="table-footer"><div><b>${sorted.length}</b> ${sorted.length === 1 ? "fila" : "filas"}${sorted.length !== rows.length ? ` (filtradas de ${rows.length})` : ""}</div></div>`;
+            } else if (footer) {
+                footer.innerHTML = "";
+            }
+        }
+
         // ---------- Vistas ----------
         const kpi = (label, value, extraClass = "") => `<div class="kpi"><b class="${extraClass}">${value}</b><span>${label}</span></div>`;
 
-        const topEntitiesCard = (title, items) => `
-    <div class="card">
-      <h3>${title}</h3>
-      <table>
-        <thead><tr><th>Nombre</th><th>Tipo</th><th>Eventos 24 h</th></tr></thead>
-        <tbody>${items.map((e) => `<tr><td>${entityLink(e)}</td><td class="muted">${esc(e.subtype ?? "—")}</td><td>${e.recent_events}</td></tr>`).join("")
-            || `<tr><td colspan="3" class="muted">Todavía sin datos: se generan al enriquecer eventos</td></tr>`}</tbody>
-      </table>
-    </div>`;
+        const OVERVIEW_ENTITY_COLS = [
+            { label: "Nombre", sortKey: "name", type: "string" },
+            { label: "Tipo", sortKey: "subtype", type: "string" },
+            { label: "Eventos 24 h", sortKey: "recent_events", type: "number" },
+        ];
+
+        const TREND_COLS = [
+            { label: "Categoría", sortKey: "name", type: "string" },
+            { label: "24 h", sortKey: "today", type: "number" },
+            { label: "Media previa", sortKey: "baseline", type: "number" },
+            { label: "z", sortKey: "zScore", type: "number" },
+            { label: "7 días", sortKey: "dailySum", type: "number", getValue: (t) => t.daily.reduce((a, b) => a + b, 0) },
+            { label: "Estado", sortKey: "anomaly", type: "boolean" },
+        ];
+
+        const RUN_COLS = [
+            { label: "Inicio", sortKey: "started_at", type: "date" },
+            { label: "Estado", sortKey: "ok", type: "boolean" },
+            { label: "Duración", sortKey: "duration_ms", type: "number" },
+            { label: "Detalle", sortKey: "details", type: "string" },
+        ];
 
         async function overviewView() {
             const [overview, trends, runs, actors, places] = await Promise.all([
                 api("/overview"), api("/trends"), api("/runs"),
-                api("/entities?kind=actor&hours=24&limit=8"),
-                api("/entities?kind=location&hours=24&limit=8"),
+                api("/entities?kind=actor&hours=24&limit=15"),
+                api("/entities?kind=location&hours=24&limit=15"),
             ]);
             const volume = [...overview.dailyVolume].reverse();
             const maxVolume = Math.max(1, ...volume);
 
-            return `
+            const html = `
     <h2>Resumen</h2>
     ${overview.geminiConfigured ? "" : `<div class="banner">Falta <b>GEMINI_API_KEY</b>: se descargan artículos, pero no se clasifican ni se enriquecen los eventos.</div>`}
     <div class="toolbar">
@@ -816,31 +1120,78 @@
     </div>
 
     <div class="grid-2">
-      ${topEntitiesCard("Actores más activos (24 h)", actors)}
-      ${topEntitiesCard("Lugares más activos (24 h)", places)}
+      <div class="card">
+        <h3>Actores más activos (24 h)</h3>
+        ${tableShell("overview-actors", OVERVIEW_ENTITY_COLS, { wrapClass: "short" })}
+      </div>
+      <div class="card">
+        <h3>Lugares más activos (24 h)</h3>
+        ${tableShell("overview-places", OVERVIEW_ENTITY_COLS, { wrapClass: "short" })}
+      </div>
     </div>
 
     <div class="card">
-      <h3>Tendencia por categoría</h3>
-      <table>
-        <thead><tr><th>Categoría</th><th>24 h</th><th>Media previa</th><th>z</th><th>7 días</th><th></th></tr></thead>
-        <tbody>${trends.map(trendRow).join("")}</tbody>
-      </table>
-      <p class="muted">Anomalía = z ≥ 2 con al menos 6 artículos. Necesita ≥ 2 días de histórico. Si "Sin categoría" es alto, baja los umbrales en Categorías y pulsa Reclasificar.</p>
+      <div class="card-head">
+        <h3>Tendencia por categoría</h3>
+        <div class="row">
+          <input class="sm" placeholder="Filtrar categoría…" value="${esc(state.overview.trendQ)}" data-live-filter="overview-trend-q">
+          <label class="check"><input type="checkbox" data-live-filter="overview-trend-anom" ${state.overview.onlyAnomalies ? "checked" : ""}> Solo anomalías</label>
+        </div>
+      </div>
+      ${tableShell("overview-trends", TREND_COLS)}
+      <p class="muted" style="margin-bottom:0">Anomalía = z ≥ 2 con al menos 6 artículos. Necesita ≥ 2 días de histórico. Si "Sin categoría" es alto, baja los umbrales en Categorías y pulsa Reclasificar.</p>
     </div>
 
     <div class="card">
-      <h3>Últimos ciclos</h3>
-      <table>
-        <thead><tr><th>Inicio</th><th>Estado</th><th>Duración</th><th>Detalle</th></tr></thead>
-        <tbody>${runs.slice(0, 10).map((run) => `
-          <tr><td>${formatTime(run.started_at)}</td>
-              <td class="${run.ok ? "up" : "down"}">${run.ok ? "OK" : "Error"}</td>
-              <td>${(run.duration_ms / 1000).toFixed(1)} s</td>
-              <td class="muted">${esc(run.details)}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">Sin ciclos todavía</td></tr>`}
-        </tbody>
-      </table>
+      <div class="card-head">
+        <h3>Últimos ciclos</h3>
+        <div class="row">
+          <input class="sm" placeholder="Buscar en detalle…" value="${esc(state.overview.runQ)}" data-live-filter="overview-run-q">
+          <select class="sm" data-live-filter="overview-run-status">
+            <option value="">Todos</option>
+            <option value="ok" ${state.overview.runStatus === "ok" ? "selected" : ""}>Solo OK</option>
+            <option value="err" ${state.overview.runStatus === "err" ? "selected" : ""}>Solo Error</option>
+          </select>
+        </div>
+      </div>
+      ${tableShell("overview-runs", RUN_COLS)}
     </div>`;
+
+            return {
+                html,
+                mount() {
+                    const entityRow = (e) => `<tr><td>${entityLink(e)}</td><td class="muted">${esc(e.subtype ?? "—")}</td><td>${e.recent_events}</td></tr>`;
+                    const emptyEnt = `<tr><td colspan="3" class="muted">Todavía sin datos: se generan al enriquecer eventos</td></tr>`;
+                    mountTable("overview-actors", { columns: OVERVIEW_ENTITY_COLS, rows: actors, rowHtml: entityRow, emptyHtml: emptyEnt, disablePagination: true });
+                    mountTable("overview-places", { columns: OVERVIEW_ENTITY_COLS, rows: places, rowHtml: entityRow, emptyHtml: emptyEnt, disablePagination: true });
+                    mountTable("overview-trends", {
+                        columns: TREND_COLS,
+                        rows: trends,
+                        filterFn: (t) => {
+                            if (state.overview.onlyAnomalies && !t.anomaly) return false;
+                            if (state.overview.trendQ && !t.name.toLowerCase().includes(state.overview.trendQ.toLowerCase())) return false;
+                            return true;
+                        },
+                        rowHtml: trendRow,
+                    });
+                    mountTable("overview-runs", {
+                        columns: RUN_COLS,
+                        rows: runs,
+                        filterFn: (r) => {
+                            if (state.overview.runStatus === "ok" && !r.ok) return false;
+                            if (state.overview.runStatus === "err" && r.ok) return false;
+                            if (state.overview.runQ && !String(r.details ?? "").toLowerCase().includes(state.overview.runQ.toLowerCase())) return false;
+                            return true;
+                        },
+                        rowHtml: (run) => `
+              <tr><td>${formatTime(run.started_at)}</td>
+                  <td class="${run.ok ? "up" : "down"}">${run.ok ? "OK" : "Error"}</td>
+                  <td>${(run.duration_ms / 1000).toFixed(1)} s</td>
+                  <td class="muted">${esc(run.details)}</td></tr>`,
+                        emptyHtml: `<tr><td colspan="4" class="muted">Sin ciclos todavía</td></tr>`,
+                    });
+                },
+            };
         }
 
         function trendRow(trend) {
@@ -866,39 +1217,100 @@
         ${options(Object.entries(STATUS_LABELS), state.eventStatus, ([, label]) => label, ([status]) => status)}
       </select>
       ${types ? `<select name="type"><option value="">Todos los tipos</option>${options(types, state.eventType, (t) => `${t.event_type} (${t.n})`, (t) => t.event_type)}</select>` : ""}
-      <button class="btn primary">Filtrar</button>
+      <button class="btn primary">Aplicar periodo</button>
     </form>`;
         }
 
+        const EVENT_COLS = [
+            { label: "Evento", sortKey: "title", type: "string" },
+            { label: "Estado", sortKey: "status", type: "number", getValue: (e) => STATUS_RANK[e.status] ?? 0 },
+            { label: "Primera noticia", sortKey: "first_seen_at", type: "date" },
+            { label: "Última", sortKey: "last_seen_at", type: "date" },
+            { label: "Medios", sortKey: "source_count", type: "number" },
+            { label: "Art.", sortKey: "article_count", type: "number" },
+            { label: "Actores y lugares", sortKey: "entities", type: "number", getValue: (e) => e.actors.length + e.locations.length },
+            { label: "Categorías", sortKey: "categories", type: "string", getValue: (e) => e.categories.join(", ") },
+        ];
+
         async function eventsView() {
-            const query = new URLSearchParams({ hours: state.eventHours, limit: 80 });
+            const query = new URLSearchParams({ hours: state.eventHours, limit: 1000 });
             if (state.eventStatus) query.set("status", state.eventStatus);
             if (state.eventType) query.set("type", state.eventType);
-            const [events, types] = await Promise.all([api(`/events?${query}`), api("/event-types")]);
+            const [events, types, categories] = await Promise.all([api(`/events?${query}`), api("/event-types"), api("/categories")]);
+            const cf = state.eventsClient;
 
-            return `
+            const html = `
     <h2>Eventos</h2>
     ${eventFilterForm(types)}
-    <div class="card"><table>
-      <thead><tr><th>Evento</th><th>Estado</th><th>Primera noticia</th><th>Última</th><th>Medios</th><th>Art.</th><th>Actores y lugares</th><th>Categorías</th></tr></thead>
-      <tbody>${events.map((event) => `
-        <tr>
-          <td>
-            <a href="#" data-action="toggle-event" data-id="${event.id}">${esc(event.title)}</a>
-            ${event.event_type ? `<span class="chip type">${esc(event.event_type)}</span>` : ""}
-            ${event.summary ? `<div class="event-summary">${esc(event.summary)}</div>` : ""}
-            <div class="detail" id="event-${event.id}"></div>
-          </td>
-          <td>${statusChip(event.status)}</td>
-          <td>${formatTime(event.first_seen_at)}<div class="muted">${timeAgo(event.first_seen_at)}</div></td>
-          <td class="muted">${timeAgo(event.last_seen_at)}</td>
-          <td>${event.source_count}</td><td>${event.article_count}</td>
-          <td>${event.actors.slice(0, 4).map((a) => entityChip(a, "actor")).join("")}${event.locations.slice(0, 3).map((p) => entityChip(p, "place")).join("")}
-              ${event.enriched ? "" : `<span class="muted">sin enriquecer</span>`}</td>
-          <td>${chips(event.categories)}</td>
-        </tr>`).join("") || `<tr><td colspan="8" class="muted">Sin eventos con estos filtros</td></tr>`}
-      </tbody>
-    </table></div>`;
+    <div class="toolbar">
+      <input placeholder="Buscar en título, resumen, actores, lugares…" value="${esc(cf.q)}" data-live-filter="events-q" style="min-width:260px">
+      <select data-live-filter="events-category">
+        <option value="">Todas las categorías</option>
+        ${options(categories, cf.category, (c) => c.name, (c) => c.name)}
+      </select>
+      <select data-live-filter="events-enriched">
+        <option value="">Enriquecidos y sin enriquecer</option>
+        <option value="yes" ${cf.enriched === "yes" ? "selected" : ""}>Solo enriquecidos</option>
+        <option value="no" ${cf.enriched === "no" ? "selected" : ""}>Solo sin enriquecer</option>
+      </select>
+      <select data-live-filter="events-min-sources">
+        <option value="0" ${cf.minSources === 0 ? "selected" : ""}>Cualquier nº de medios</option>
+        <option value="2" ${cf.minSources === 2 ? "selected" : ""}>≥ 2 medios</option>
+        <option value="3" ${cf.minSources === 3 ? "selected" : ""}>≥ 3 medios</option>
+        <option value="5" ${cf.minSources === 5 ? "selected" : ""}>≥ 5 medios</option>
+        <option value="10" ${cf.minSources === 10 ? "selected" : ""}>≥ 10 medios</option>
+      </select>
+      <button type="button" class="btn" data-action="clear-filters" data-scope="events">Limpiar filtros</button>
+    </div>
+    <div class="card">
+      ${tableShell("events", EVENT_COLS)}
+    </div>`;
+
+            return {
+                html,
+                mount() {
+                    mountTable("events", {
+                        columns: EVENT_COLS,
+                        rows: events,
+                        filterFn: (ev) => {
+                            if (cf.category && !ev.categories.includes(cf.category)) return false;
+                            if (cf.enriched === "yes" && !ev.enriched) return false;
+                            if (cf.enriched === "no" && ev.enriched) return false;
+                            if (cf.minSources && ev.source_count < cf.minSources) return false;
+                            if (cf.q) {
+                                const needle = cf.q.toLowerCase();
+                                const hay = [
+                                    ev.title,
+                                    ev.summary,
+                                    ev.event_type,
+                                    ...ev.categories,
+                                    ...ev.actors.map((a) => a.name),
+                                    ...ev.locations.map((p) => p.name),
+                                ].filter(Boolean).join(" ").toLowerCase();
+                                if (!hay.includes(needle)) return false;
+                            }
+                            return true;
+                        },
+                        rowHtml: (event) => `
+              <tr>
+                <td>
+                  <a href="#" data-action="toggle-event" data-id="${event.id}">${esc(event.title)}</a>
+                  ${event.event_type ? `<span class="chip type">${esc(event.event_type)}</span>` : ""}
+                  ${event.summary ? `<div class="event-summary">${esc(event.summary)}</div>` : ""}
+                  <div class="detail" id="event-${event.id}"></div>
+                </td>
+                <td>${statusChip(event.status)}</td>
+                <td>${formatTime(event.first_seen_at)}<div class="muted">${timeAgo(event.first_seen_at)}</div></td>
+                <td class="muted">${timeAgo(event.last_seen_at)}</td>
+                <td>${event.source_count}</td><td>${event.article_count}</td>
+                <td>${event.actors.slice(0, 4).map((a) => entityChip(a, "actor")).join("")}${event.locations.slice(0, 3).map((p) => entityChip(p, "place")).join("")}
+                    ${event.enriched ? "" : `<span class="muted">sin enriquecer</span>`}</td>
+                <td>${chips(event.categories)}</td>
+              </tr>`,
+                        emptyHtml: `<tr><td colspan="8" class="muted">Sin eventos con estos filtros</td></tr>`,
+                    });
+                },
+            };
         }
 
         // ---------- Mapa (Mapbox GL JS, se carga solo al abrir la vista) ----------
@@ -906,11 +1318,6 @@
         const MAPBOX_BASE = `https://api.mapbox.com/mapbox-gl-js/${MAPBOX_VERSION}/mapbox-gl`;
         const MAP_STYLE = "mapbox://styles/mapbox/dark-v11";
 
-        /**
-         * Mapbox cobra por cada carga de mapa (cada `new Map`), así que se crea UNA sola instancia
-         * y se reutiliza: su contenedor vive en memoria y se coloca en la vista Mapa al entrar.
-         * Cambiar filtros o salir y volver no recrea el mapa; solo se actualizan los datos.
-         */
         const mapEl = Object.assign(document.createElement("div"), { id: "event-map" });
         let mapboxToken;
         let mapboxReady;
@@ -937,7 +1344,6 @@
             mapboxReady ??= (async () => {
                 const css = Object.assign(document.createElement("link"), { rel: "stylesheet", href: `${MAPBOX_BASE}.css` });
                 const script = Object.assign(document.createElement("script"), { src: `${MAPBOX_BASE}.js` });
-                // Se inserta el CSS antes de <style> para que los estilos oscuros del mapa tengan prioridad.
                 await Promise.all([appendAndWait(css, true), appendAndWait(script)]);
                 return window.mapboxgl;
             })().catch((error) => { mapboxReady = undefined; throw error; });
@@ -949,7 +1355,6 @@
             return mapboxToken;
         }
 
-        /** Donde ocurre el evento: primero "occurred", si no cualquier lugar con coordenadas. */
         const primaryPlace = (event) =>
             event.locations.find((p) => p.role === "occurred" && p.lat != null) ?? event.locations.find((p) => p.lat != null);
 
@@ -1024,7 +1429,6 @@
                 id: "events-circles",
                 type: "circle",
                 source: "events",
-                // Los círculos pequeños se dibujan encima de los grandes para que todos se puedan pulsar.
                 layout: { "circle-sort-key": ["-", ["get", "radius"]] },
                 paint: {
                     "circle-radius": ["get", "radius"],
@@ -1040,7 +1444,6 @@
                 const group = feature && mapGroups.get(Number(feature.properties.id));
                 if (!group) return;
 
-                // Con varias copias del mundo visibles, el popup debe salir en la copia pulsada.
                 const coordinates = feature.geometry.coordinates.slice();
                 while (Math.abs(event.lngLat.lng - coordinates[0]) > 180) {
                     coordinates[0] += event.lngLat.lng > coordinates[0] ? 360 : -360;
@@ -1075,7 +1478,6 @@
             map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
             mapLoaded = new Promise((resolve) => map.once("load", () => { addEventLayers(initialFeatures); resolve(); }));
 
-            // Token inválido, caducado o restringido por URL: se descarta el mapa para poder reintentar.
             map.on("error", (event) => {
                 const status = event.error?.status;
                 if (status !== 401 && status !== 403) return;
@@ -1096,7 +1498,6 @@
             if (count) count.textContent = `${data.located} de ${data.total} eventos con localización · ${data.groups.size} lugares`;
         }
 
-        /** Pide los eventos con los filtros actuales y actualiza el mapa sin recrearlo. */
         async function refreshMapData({ fit = false } = {}) {
             try {
                 const events = await fetchMapEvents();
@@ -1145,13 +1546,12 @@
                     return;
                 }
 
-                // Se cargan librería, token y eventos en paralelo para iniciar en el encuadre final sin cancelar teselas.
                 const [mapboxgl, accessToken, events] = await Promise.all([
                     loadMapbox(),
                     getMapboxToken(),
                     fetchMapEvents(),
                 ]);
-                if (!slot.isConnected) return; // el usuario ya cambió de vista
+                if (!slot.isConnected) return;
                 if (!accessToken) throw new Error("Falta MAPBOX_TOKEN en el .env del servidor (usa un token público, pk.…)");
 
                 const data = buildMapData(events);
@@ -1170,50 +1570,79 @@
         }
 
         // ---------- Entidades ----------
-        async function entityDetailHtml(id) {
+        const ENTITY_EVENT_COLS = [
+            { label: "Evento", sortKey: "title", type: "string" },
+            { label: "Estado", sortKey: "status", type: "number", getValue: (e) => STATUS_RANK[e.status] ?? 0 },
+            { label: "Primera noticia", sortKey: "first_seen_at", type: "date" },
+            { label: "Medios", sortKey: "source_count", type: "number" },
+        ];
+
+        async function entityDetailSection(id) {
             const [{ entity, aliases, related }, events] = await Promise.all([
                 api(`/entities/${id}`),
-                api(`/events?entity=${id}&hours=8760&limit=15`),
+                api(`/events?entity=${id}&hours=8760&limit=200`),
             ]);
             const coords = entity.lat != null
                 ? `${entity.lat.toFixed(3)}, ${entity.lon.toFixed(3)} (${entity.geo_source === "geocoder" ? "geocodificado" : "aproximado por el LLM"})`
                 : "sin coordenadas";
 
-            return `
-    <div class="card">
-      <div class="row" style="justify-content:space-between;align-items:center">
-        <h2 style="margin:0">${esc(entity.name)}</h2>
-        <button class="btn" data-action="close-entity">Cerrar</button>
-      </div>
-      <p class="muted">${entity.kind === "actor" ? "Actor" : "Lugar"} · ${esc(entity.subtype ?? "—")} · ${esc(entity.country_code ?? "—")}${entity.kind === "location" ? ` · ${coords}` : ""}</p>
-      <p class="muted">Primera aparición ${formatTime(entity.first_seen_at)} · última ${timeAgo(entity.last_seen_at)}</p>
-      <h3>Alias</h3>
-      <p>${chips(aliases) || `<span class="muted">—</span>`}</p>
-      <h3>Aparece junto a</h3>
-      <p>${related.map((r) => `<span class="chip clickable ${r.kind === "actor" ? "actor" : "place"}" data-action="open-entity" data-id="${r.id}">${esc(r.name)} · ${r.shared}</span>`).join("") || `<span class="muted">—</span>`}</p>
-      <h3>Eventos</h3>
-      <table>
-        <thead><tr><th>Evento</th><th>Estado</th><th>Primera noticia</th><th>Medios</th></tr></thead>
-        <tbody>${events.map((e) => `<tr><td>${esc(e.title)}</td><td>${statusChip(e.status)}</td><td class="muted">${formatTime(e.first_seen_at)}</td><td>${e.source_count}</td></tr>`).join("")
-                || `<tr><td colspan="4" class="muted">Sin eventos</td></tr>`}</tbody>
-      </table>
-    </div>`;
+            return {
+                html: `
+          <div class="card">
+            <div class="row" style="justify-content:space-between;align-items:center">
+              <h2 style="margin:0">${esc(entity.name)}</h2>
+              <button class="btn" data-action="close-entity">Cerrar</button>
+            </div>
+            <p class="muted">${entity.kind === "actor" ? "Actor" : "Lugar"} · ${esc(entity.subtype ?? "—")} · ${esc(entity.country_code ?? "—")}${entity.kind === "location" ? ` · ${coords}` : ""}</p>
+            <p class="muted">Primera aparición ${formatTime(entity.first_seen_at)} · última ${timeAgo(entity.last_seen_at)}</p>
+            <h3>Alias</h3>
+            <p>${chips(aliases) || `<span class="muted">—</span>`}</p>
+            <h3>Aparece junto a</h3>
+            <p>${related.map((r) => `<span class="chip clickable ${r.kind === "actor" ? "actor" : "place"}" data-action="open-entity" data-id="${r.id}">${esc(r.name)} · ${r.shared}</span>`).join("") || `<span class="muted">—</span>`}</p>
+            <h3>Eventos</h3>
+            ${tableShell("entity-events", ENTITY_EVENT_COLS, { wrapClass: "short" })}
+          </div>`,
+                mount() {
+                    mountTable("entity-events", {
+                        columns: ENTITY_EVENT_COLS,
+                        rows: events,
+                        disablePagination: true,
+                        rowHtml: (e) => `<tr><td>${esc(e.title)}</td><td>${statusChip(e.status)}</td><td class="muted">${formatTime(e.first_seen_at)}</td><td>${e.source_count}</td></tr>`,
+                        emptyHtml: `<tr><td colspan="4" class="muted">Sin eventos</td></tr>`,
+                    });
+                },
+            };
         }
+
+        const ENTITY_COLS = [
+            { label: "Nombre", sortKey: "name", type: "string" },
+            { label: "Clase", sortKey: "kind", type: "string" },
+            { label: "Tipo", sortKey: "subtype", type: "string" },
+            { label: "País", sortKey: "country_code", type: "string" },
+            { label: "Eventos (periodo)", sortKey: "recent_events", type: "number" },
+            { label: "Eventos (total)", sortKey: "total_events", type: "number" },
+            { label: "Primera vez", sortKey: "first_seen_at", type: "date" },
+            { label: "Última", sortKey: "last_seen_at", type: "date" },
+            { label: "Coordenadas", sortKey: "lat", type: "number" },
+        ];
 
         async function entitiesView() {
             const filters = state.entities;
-            const query = new URLSearchParams({ hours: filters.hours, limit: 100, q: filters.q });
+            const query = new URLSearchParams({ hours: filters.hours, limit: 1000, q: filters.q });
             if (filters.kind) query.set("kind", filters.kind);
             const entities = await api(`/entities?${query}`);
 
-            let detail = "";
+            let detail = null;
             if (state.entityId) {
-                try { detail = await entityDetailHtml(state.entityId); } catch { state.entityId = null; }
+                try { detail = await entityDetailSection(state.entityId); } catch { state.entityId = null; }
             }
 
-            return `
+            const subtypes = [...new Set(entities.map((e) => e.subtype).filter(Boolean))].sort((a, b) => collator.compare(a, b));
+            const countries = [...new Set(entities.map((e) => e.country_code).filter(Boolean))].sort((a, b) => collator.compare(a, b));
+
+            const html = `
     <h2>Entidades</h2>
-    ${detail}
+    ${detail ? detail.html : ""}
     <form class="toolbar" data-form="entity-filters" data-autosubmit>
       <select name="kind">
         <option value="">Actores y lugares</option>
@@ -1221,55 +1650,138 @@
         <option value="location" ${filters.kind === "location" ? "selected" : ""}>Solo lugares</option>
       </select>
       <select name="hours">${options(Object.entries(ENTITY_HOUR_LABELS), filters.hours, ([, label]) => label, ([hours]) => hours)}</select>
-      <input name="q" placeholder="Buscar por nombre o alias" value="${esc(filters.q)}">
-      <button class="btn primary">Filtrar</button>
+      <input name="q" placeholder="Buscar por nombre o alias" value="${esc(filters.q)}" data-live-filter="entities-q">
+      <button class="btn primary">Consultar periodo</button>
     </form>
-    <div class="card"><table>
-      <thead><tr><th>Nombre</th><th>Clase</th><th>Tipo</th><th>País</th><th>Eventos (periodo)</th><th>Eventos (total)</th><th>Primera vez</th><th>Última</th><th>Coordenadas</th></tr></thead>
-      <tbody>${entities.map((e) => `
-        <tr>
-          <td>${entityLink(e)}</td>
-          <td><span class="chip ${e.kind === "actor" ? "actor" : "place"}">${e.kind === "actor" ? "Actor" : "Lugar"}</span></td>
-          <td class="muted">${esc(e.subtype ?? "—")}</td>
-          <td class="muted">${esc(e.country_code ?? "—")}</td>
-          <td>${e.recent_events}</td><td>${e.total_events}</td>
-          <td class="muted">${formatTime(e.first_seen_at)}</td>
-          <td class="muted">${timeAgo(e.last_seen_at)}</td>
-          <td class="muted">${e.lat != null ? `${e.lat.toFixed(2)}, ${e.lon.toFixed(2)}${e.geo_source === "llm" ? " ≈" : ""}` : "—"}</td>
-        </tr>`).join("") || `<tr><td colspan="9" class="muted">Sin entidades. Se generan solas al enriquecer eventos.</td></tr>`}
-      </tbody>
-    </table></div>`;
+    <div class="toolbar">
+      <select data-live-filter="entities-subtype">
+        <option value="">Todos los subtipos</option>
+        ${subtypes.map((s) => `<option value="${esc(s)}" ${filters.subtype === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
+      </select>
+      <select data-live-filter="entities-country">
+        <option value="">Todos los países</option>
+        ${countries.map((c) => `<option value="${esc(c)}" ${filters.country === c ? "selected" : ""}>${esc(c)}</option>`).join("")}
+      </select>
+      <select data-live-filter="entities-coords">
+        <option value="">Con y sin coordenadas</option>
+        <option value="yes" ${filters.hasCoords === "yes" ? "selected" : ""}>Solo con coordenadas</option>
+        <option value="no" ${filters.hasCoords === "no" ? "selected" : ""}>Solo sin coordenadas</option>
+      </select>
+      <select data-live-filter="entities-min-events">
+        <option value="0" ${filters.minEvents === 0 ? "selected" : ""}>Cualquier nº de eventos</option>
+        <option value="2" ${filters.minEvents === 2 ? "selected" : ""}>≥ 2 eventos (periodo)</option>
+        <option value="5" ${filters.minEvents === 5 ? "selected" : ""}>≥ 5 eventos (periodo)</option>
+        <option value="10" ${filters.minEvents === 10 ? "selected" : ""}>≥ 10 eventos (periodo)</option>
+      </select>
+      <button type="button" class="btn" data-action="clear-filters" data-scope="entities">Limpiar filtros</button>
+    </div>
+    <div class="card">
+      ${tableShell("entities", ENTITY_COLS)}
+    </div>`;
+
+            return {
+                html,
+                mount() {
+                    detail?.mount();
+                    mountTable("entities", {
+                        columns: ENTITY_COLS,
+                        rows: entities,
+                        filterFn: (e) => {
+                            if (filters.subtype && e.subtype !== filters.subtype) return false;
+                            if (filters.country && e.country_code !== filters.country) return false;
+                            if (filters.hasCoords === "yes" && e.lat == null) return false;
+                            if (filters.hasCoords === "no" && e.lat != null) return false;
+                            if (filters.minEvents && e.recent_events < filters.minEvents) return false;
+                            if (filters.q) {
+                                const needle = filters.q.toLowerCase();
+                                const hay = `${e.name} ${e.subtype ?? ""} ${e.country_code ?? ""}`.toLowerCase();
+                                if (!hay.includes(needle)) return false;
+                            }
+                            return true;
+                        },
+                        rowHtml: (e) => `
+              <tr>
+                <td>${entityLink(e)}</td>
+                <td><span class="chip ${e.kind === "actor" ? "actor" : "place"}">${e.kind === "actor" ? "Actor" : "Lugar"}</span></td>
+                <td class="muted">${esc(e.subtype ?? "—")}</td>
+                <td class="muted">${esc(e.country_code ?? "—")}</td>
+                <td>${e.recent_events}</td><td>${e.total_events}</td>
+                <td class="muted">${formatTime(e.first_seen_at)}</td>
+                <td class="muted">${timeAgo(e.last_seen_at)}</td>
+                <td class="muted">${e.lat != null ? `${e.lat.toFixed(2)}, ${e.lon.toFixed(2)}${e.geo_source === "llm" ? " ≈" : ""}` : "—"}</td>
+              </tr>`,
+                        emptyHtml: `<tr><td colspan="9" class="muted">Sin entidades. Se generan solas al enriquecer eventos.</td></tr>`,
+                    });
+                },
+            };
         }
 
         // ---------- Artículos, categorías, fuentes, ajustes, briefing ----------
+        const ARTICLE_COLS = [
+            { label: "Fecha", sortKey: "published_at", type: "date" },
+            { label: "Fuente", sortKey: "source", type: "string" },
+            { label: "Título", sortKey: "title", type: "string" },
+            { label: "Categorías (similitud)", sortKey: "maxScore", type: "number", getValue: (a) => a.categories.length ? Math.max(...a.categories.map((c) => c.score)) : (a.status === "pending" ? -2 : -1) },
+        ];
+
         async function articlesView() {
             const filters = state.articles;
-            const query = new URLSearchParams({ limit: ARTICLES_PER_PAGE, offset: filters.offset, q: filters.q, category: filters.category, source: filters.source });
+            const query = new URLSearchParams({ limit: filters.limit, offset: filters.offset, q: filters.q, category: filters.category, source: filters.source });
             const [articles, categories, sources] = await Promise.all([api(`/articles?${query}`), api("/categories"), api("/sources")]);
 
-            return `
+            const html = `
     <h2>Artículos</h2>
     <form class="toolbar" data-form="article-filters" data-autosubmit>
       <input name="q" placeholder="Buscar en títulos" value="${esc(filters.q)}">
       <select name="category"><option value="">Todas las categorías</option>${options(categories, filters.category)}</select>
       <select name="source"><option value="">Todas las fuentes</option>${options(sources, filters.source)}</select>
+      <select name="limit">
+        ${[50, 100, 250, 500].map((n) => `<option value="${n}" ${filters.limit === n ? "selected" : ""}>${n} por página</option>`).join("")}
+      </select>
       <button class="btn primary">Filtrar</button>
+      <button type="button" class="btn" data-action="clear-filters" data-scope="articles">Limpiar</button>
     </form>
-    <div class="card"><table>
-      <thead><tr><th>Fecha</th><th>Fuente</th><th>Título</th><th>Categorías (similitud)</th></tr></thead>
-      <tbody>${articles.map((article) => `
-        <tr>
-          <td class="muted">${formatTime(article.published_at)}</td>
-          <td>${esc(article.source)}</td>
-          <td><a href="${safeHref(article.url)}" target="_blank" rel="noopener">${esc(article.title)}</a></td>
-          <td>${article.status === "pending" ? `<span class="muted">pendiente</span>` : chips(article.categories.map((c) => `${c.name} ${c.score.toFixed(2)}`)) || `<span class="muted">—</span>`}</td>
-        </tr>`).join("") || `<tr><td colspan="4" class="muted">Sin resultados</td></tr>`}
-      </tbody>
-    </table></div>
+    <div class="toolbar compact">
+      <select data-live-filter="articles-status">
+        <option value="">Todos los estados de clasificación</option>
+        <option value="classified" ${filters.status === "classified" ? "selected" : ""}>Con categoría</option>
+        <option value="unclassified" ${filters.status === "unclassified" ? "selected" : ""}>Sin categoría</option>
+        <option value="pending" ${filters.status === "pending" ? "selected" : ""}>Pendientes</option>
+      </select>
+    </div>
+    <div class="card">
+      ${tableShell("articles", ARTICLE_COLS)}
+    </div>
     <div class="toolbar">
       <button class="btn" data-action="page" data-step="-1" ${filters.offset === 0 ? "disabled" : ""}>← Anterior</button>
-      <button class="btn" data-action="page" data-step="1" ${articles.length < ARTICLES_PER_PAGE ? "disabled" : ""}>Siguiente →</button>
+      <span class="muted">Página ${Math.floor(filters.offset / filters.limit) + 1}</span>
+      <button class="btn" data-action="page" data-step="1" ${articles.length < filters.limit ? "disabled" : ""}>Siguiente →</button>
     </div>`;
+
+            return {
+                html,
+                mount() {
+                    mountTable("articles", {
+                        columns: ARTICLE_COLS,
+                        rows: articles,
+                        disablePagination: true,
+                        filterFn: (a) => {
+                            if (filters.status === "classified" && (a.status === "pending" || !a.categories.length)) return false;
+                            if (filters.status === "unclassified" && (a.status === "pending" || a.categories.length > 0)) return false;
+                            if (filters.status === "pending" && a.status !== "pending") return false;
+                            return true;
+                        },
+                        rowHtml: (article) => `
+              <tr>
+                <td class="muted">${formatTime(article.published_at)}</td>
+                <td>${esc(article.source)}</td>
+                <td><a href="${safeHref(article.url)}" target="_blank" rel="noopener">${esc(article.title)}</a></td>
+                <td>${article.status === "pending" ? `<span class="muted">pendiente</span>` : chips(article.categories.map((c) => `${c.name} ${c.score.toFixed(2)}`)) || `<span class="muted">—</span>`}</td>
+              </tr>`,
+                        emptyHtml: `<tr><td colspan="4" class="muted">Sin resultados</td></tr>`,
+                    });
+                },
+            };
         }
 
         const categoryForm = (category = {}) => `
@@ -1316,23 +1828,27 @@
     </td>
   </tr>`;
 
-        async function sourcesView() {
-            const sources = await api("/sources");
-            const filters = state.sources;
-            const visible = sources.filter((source) => {
-                if (filters.type && source.type !== filters.type) return false;
-                if (filters.onlyErrors && !source.last_error) return false;
-                if (filters.q) {
-                    const needle = filters.q.toLowerCase();
-                    if (!source.name.toLowerCase().includes(needle) && !source.url.toLowerCase().includes(needle)) return false;
-                }
-                return true;
-            });
-            const failingCount = sources.filter((s) => s.enabled && s.last_error).length;
+        const SOURCE_COLS = [
+            { label: "On", sortKey: "enabled", type: "boolean" },
+            { label: "Fuente", sortKey: "name", type: "string" },
+            { label: "Tipo", sortKey: "type", type: "string" },
+            { label: "Cada", sortKey: "interval_minutes", type: "number" },
+            { label: "Última descarga", sortKey: "last_fetched_at", type: "date" },
+            { label: "Artículos", sortKey: "articles_total", type: "number" },
+            { label: "Error", sortKey: "last_error", type: "string" },
+            { label: "", sortKey: null },
+        ];
 
-            return `
+        let cachedSources = [];
+
+        async function sourcesView() {
+            cachedSources = await api("/sources");
+            const filters = state.sources;
+            const failingCount = cachedSources.filter((s) => s.enabled && s.last_error).length;
+
+            const html = `
     <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:16px">
-      <h2 style="margin:0">Fuentes <span class="muted" style="font-size:14px;font-weight:400">(${sources.length}${failingCount ? ` · <span class="down">${failingCount} con error</span>` : ""})</span></h2>
+      <h2 style="margin:0">Fuentes <span class="muted" style="font-size:14px;font-weight:400">(${cachedSources.length}${failingCount ? ` · <span class="down">${failingCount} con error</span>` : ""})</span></h2>
       <button class="btn" data-action="seed-sources">Añadir fuentes recomendadas</button>
     </div>
     <form class="card form-grid" data-form="source">
@@ -1342,39 +1858,65 @@
       <label>Cada (min)<input name="interval_minutes" type="number" min="5" max="1440" value="30" required></label>
       <button class="btn primary">Añadir fuente</button>
     </form>
-    <form class="toolbar" data-form="source-filters" data-autosubmit>
-      <input name="q" placeholder="Buscar por nombre o URL" value="${esc(filters.q)}">
-      <select name="type">
+    <div class="toolbar">
+      <input placeholder="Buscar por nombre o URL" value="${esc(filters.q)}" data-live-filter="sources-q">
+      <select data-live-filter="sources-type">
         <option value="">Todos los tipos</option>
         <option value="rss" ${filters.type === "rss" ? "selected" : ""}>Solo RSS / Atom</option>
         <option value="gdelt" ${filters.type === "gdelt" ? "selected" : ""}>Solo GDELT</option>
       </select>
-      <label class="check"><input type="checkbox" name="onlyErrors" ${filters.onlyErrors ? "checked" : ""}> Solo con error</label>
-      <button class="btn">Filtrar</button>
-    </form>
-    <div class="card"><table>
-      <thead><tr><th>On</th><th>Fuente</th><th>Tipo</th><th>Cada</th><th>Última descarga</th><th>Artículos</th><th>Error</th><th></th></tr></thead>
-      <tbody>${visible.map((source) => `
-        <tr>
-          <td><input type="checkbox" data-action="toggle-source" data-id="${source.id}" ${source.enabled ? "checked" : ""}></td>
-          <td>
-            <div>${esc(source.name)}</div>
-            <div class="source-url" title="${esc(source.url)}">${esc(source.url)}</div>
-          </td>
-          <td class="muted">${source.type}</td>
-          <td>${source.interval_minutes} min</td>
-          <td class="muted">${timeAgo(source.last_fetched_at)}</td>
-          <td>${source.articles_total}</td>
-          <td class="error" title="${esc(source.last_error)}">${esc(source.last_error)}</td>
-          <td><div class="actions-cell">
-              <button class="btn" data-action="edit-source" data-id="${source.id}">${state.editingSourceId === source.id ? "Cerrar" : "Editar"}</button>
-              <button class="btn" data-action="fetch-source" data-id="${source.id}">Descargar</button>
-              <button class="btn danger" data-action="delete-source" data-id="${source.id}">×</button>
-          </div></td>
-        </tr>
-        ${state.editingSourceId === source.id ? sourceEditRow(source) : ""}`).join("") || `<tr><td colspan="8" class="muted">Sin fuentes que coincidan con el filtro</td></tr>`}
-      </tbody>
-    </table></div>`;
+      <select data-live-filter="sources-enabled">
+        <option value="">Activas y desactivadas</option>
+        <option value="on" ${filters.enabled === "on" ? "selected" : ""}>Solo activas</option>
+        <option value="off" ${filters.enabled === "off" ? "selected" : ""}>Solo desactivadas</option>
+      </select>
+      <label class="check"><input type="checkbox" data-live-filter="sources-errors" ${filters.onlyErrors ? "checked" : ""}> Solo con error</label>
+      <button type="button" class="btn" data-action="clear-filters" data-scope="sources">Limpiar filtros</button>
+    </div>
+    <div class="card">
+      ${tableShell("sources", SOURCE_COLS)}
+    </div>`;
+
+            return {
+                html,
+                mount() {
+                    mountTable("sources", {
+                        columns: SOURCE_COLS,
+                        rows: cachedSources,
+                        filterFn: (source) => {
+                            if (filters.type && source.type !== filters.type) return false;
+                            if (filters.onlyErrors && !source.last_error) return false;
+                            if (filters.enabled === "on" && !source.enabled) return false;
+                            if (filters.enabled === "off" && source.enabled) return false;
+                            if (filters.q) {
+                                const needle = filters.q.toLowerCase();
+                                if (!source.name.toLowerCase().includes(needle) && !source.url.toLowerCase().includes(needle)) return false;
+                            }
+                            return true;
+                        },
+                        rowHtml: (source) => `
+              <tr>
+                <td><input type="checkbox" data-action="toggle-source" data-id="${source.id}" ${source.enabled ? "checked" : ""}></td>
+                <td>
+                  <div>${esc(source.name)}</div>
+                  <div class="source-url" title="${esc(source.url)}">${esc(source.url)}</div>
+                </td>
+                <td class="muted">${source.type}</td>
+                <td>${source.interval_minutes} min</td>
+                <td class="muted">${timeAgo(source.last_fetched_at)}</td>
+                <td>${source.articles_total}</td>
+                <td class="error" title="${esc(source.last_error)}">${esc(source.last_error)}</td>
+                <td><div class="actions-cell">
+                    <button class="btn" data-action="edit-source" data-id="${source.id}">${state.editingSourceId === source.id ? "Cerrar" : "Editar"}</button>
+                    <button class="btn" data-action="fetch-source" data-id="${source.id}">Descargar</button>
+                    <button class="btn danger" data-action="delete-source" data-id="${source.id}">×</button>
+                </div></td>
+              </tr>
+              ${state.editingSourceId === source.id ? sourceEditRow(source) : ""}`,
+                        emptyHtml: `<tr><td colspan="8" class="muted">Sin fuentes que coincidan con el filtro</td></tr>`,
+                    });
+                },
+            };
         }
 
         const SETTING_GROUPS = [
@@ -1424,7 +1966,6 @@
 
         // ---------- Router ----------
         const views = { overview: overviewView, events: eventsView, map: mapView, entities: entitiesView, articles: articlesView, categories: categoriesView, sources: sourcesView, digest: digestView, settings: settingsView };
-        /** Código que necesita el DOM ya pintado. */
         const hooks = { map: mapHook };
 
         function currentView() {
@@ -1433,10 +1974,17 @@
         }
 
         async function render() {
+            clearTableObservers();
             const name = currentView();
             document.querySelectorAll("nav a").forEach((link) => link.classList.toggle("active", link.dataset.view === name));
             try {
-                $("#view").innerHTML = await views[name]();
+                const result = await views[name]();
+                if (typeof result === "string") {
+                    $("#view").innerHTML = result;
+                } else {
+                    $("#view").innerHTML = result.html;
+                    result.mount?.();
+                }
                 await hooks[name]?.();
             } catch (error) {
                 $("#view").innerHTML = `<div class="banner">${esc(error.message)}</div>`;
@@ -1494,7 +2042,26 @@
             },
             async "close-entity"() { state.entityId = null; await render(); },
             async page(el) {
-                state.articles.offset = Math.max(0, state.articles.offset + Number(el.dataset.step) * ARTICLES_PER_PAGE);
+                state.articles.offset = Math.max(0, state.articles.offset + Number(el.dataset.step) * state.articles.limit);
+                await render();
+            },
+            async "clear-filters"(el) {
+                const scope = el.dataset.scope;
+                if (scope === "events") {
+                    state.eventHours = 24;
+                    state.eventStatus = "";
+                    state.eventType = "";
+                    state.eventsClient = { q: "", category: "", enriched: "", minSources: 0 };
+                    state.pages.events.page = 0;
+                } else if (scope === "entities") {
+                    state.entities = { kind: "", hours: 168, q: "", subtype: "", country: "", hasCoords: "", minEvents: 0 };
+                    state.pages.entities.page = 0;
+                } else if (scope === "articles") {
+                    state.articles = { q: "", category: "", source: "", status: "", offset: 0, limit: 100 };
+                } else if (scope === "sources") {
+                    state.sources = { q: "", type: "", onlyErrors: false, enabled: "" };
+                    state.pages.sources.page = 0;
+                }
                 await render();
             },
             async "delete-category"(el) {
@@ -1502,15 +2069,19 @@
                 await api(`/categories/${el.dataset.id}`, { method: "DELETE" });
                 await render();
             },
-            async "toggle-source"(el) { await api(`/sources/${el.dataset.id}`, { method: "PATCH", body: { enabled: el.checked } }); },
+            async "toggle-source"(el) {
+                await api(`/sources/${el.dataset.id}`, { method: "PATCH", body: { enabled: el.checked } });
+                const src = cachedSources.find((s) => s.id === Number(el.dataset.id));
+                if (src) src.enabled = el.checked ? 1 : 0;
+            },
             async "edit-source"(el) {
                 const id = Number(el.dataset.id);
                 state.editingSourceId = state.editingSourceId === id ? null : id;
-                await render();
+                renderTable("sources");
             },
             async "cancel-edit-source"() {
                 state.editingSourceId = null;
-                await render();
+                renderTable("sources");
             },
             async "seed-sources"() {
                 const { added } = await api("/sources/defaults", { method: "POST" });
@@ -1536,7 +2107,6 @@
             },
         };
 
-        /** Convierte un formulario en objeto: números como number, checkboxes como boolean. */
         function formValues(form) {
             const values = {};
             for (const input of form.querySelectorAll("[name]")) {
@@ -1564,17 +2134,13 @@
                 toast("Fuente actualizada");
                 await render();
             },
-            async "source-filters"(form) {
-                const values = formValues(form);
-                state.sources = { q: values.q.trim(), type: values.type, onlyErrors: values.onlyErrors };
-                await render();
-            },
             async settings(form) {
                 await api("/settings", { method: "PUT", body: formValues(form) });
                 toast("Ajustes guardados");
             },
             async "article-filters"(form) {
-                state.articles = { ...formValues(form), offset: 0 };
+                const values = formValues(form);
+                state.articles = { ...state.articles, q: values.q, category: values.category, source: values.source, limit: Number(values.limit) || 100, offset: 0 };
                 await render();
             },
             async "event-filters"(form) {
@@ -1582,13 +2148,14 @@
                 state.eventHours = Number(values.hours);
                 state.eventStatus = values.status ?? "";
                 if ("type" in values) state.eventType = values.type;
-                // En el mapa solo se actualizan los datos: recrear el mapa costaría otra carga facturable de Mapbox.
+                state.pages.events.page = 0;
                 if (currentView() === "map" && map) await refreshMapData({ fit: true });
                 else await render();
             },
             async "entity-filters"(form) {
                 const values = formValues(form);
-                state.entities = { kind: values.kind, hours: Number(values.hours), q: values.q.trim() };
+                state.entities = { ...state.entities, kind: values.kind, hours: Number(values.hours), q: values.q.trim() };
+                state.pages.entities.page = 0;
                 await render();
             },
         };
@@ -1597,21 +2164,141 @@
             try { await task(); } catch (error) { toast(error.message, true); }
         }
 
+        function applyLiveFilter(el) {
+            const key = el.dataset.liveFilter;
+            if (key === "overview-trend-q") {
+                state.overview.trendQ = el.value.trim();
+                state.pages["overview-trends"].page = 0;
+                renderTable("overview-trends");
+            } else if (key === "overview-trend-anom") {
+                state.overview.onlyAnomalies = el.checked;
+                state.pages["overview-trends"].page = 0;
+                renderTable("overview-trends");
+            } else if (key === "overview-run-q") {
+                state.overview.runQ = el.value.trim();
+                state.pages["overview-runs"].page = 0;
+                renderTable("overview-runs");
+            } else if (key === "overview-run-status") {
+                state.overview.runStatus = el.value;
+                state.pages["overview-runs"].page = 0;
+                renderTable("overview-runs");
+            } else if (key === "events-q") {
+                state.eventsClient.q = el.value.trim();
+                state.pages.events.page = 0;
+                renderTable("events");
+            } else if (key === "events-category") {
+                state.eventsClient.category = el.value;
+                state.pages.events.page = 0;
+                renderTable("events");
+            } else if (key === "events-enriched") {
+                state.eventsClient.enriched = el.value;
+                state.pages.events.page = 0;
+                renderTable("events");
+            } else if (key === "events-min-sources") {
+                state.eventsClient.minSources = Number(el.value);
+                state.pages.events.page = 0;
+                renderTable("events");
+            } else if (key === "entities-q") {
+                state.entities.q = el.value.trim();
+                state.pages.entities.page = 0;
+                renderTable("entities");
+            } else if (key === "entities-subtype") {
+                state.entities.subtype = el.value;
+                state.pages.entities.page = 0;
+                renderTable("entities");
+            } else if (key === "entities-country") {
+                state.entities.country = el.value;
+                state.pages.entities.page = 0;
+                renderTable("entities");
+            } else if (key === "entities-coords") {
+                state.entities.hasCoords = el.value;
+                state.pages.entities.page = 0;
+                renderTable("entities");
+            } else if (key === "entities-min-events") {
+                state.entities.minEvents = Number(el.value);
+                state.pages.entities.page = 0;
+                renderTable("entities");
+            } else if (key === "articles-status") {
+                state.articles.status = el.value;
+                renderTable("articles");
+            } else if (key === "sources-q") {
+                state.sources.q = el.value.trim();
+                state.pages.sources.page = 0;
+                renderTable("sources");
+            } else if (key === "sources-type") {
+                state.sources.type = el.value;
+                state.pages.sources.page = 0;
+                renderTable("sources");
+            } else if (key === "sources-enabled") {
+                state.sources.enabled = el.value;
+                state.pages.sources.page = 0;
+                renderTable("sources");
+            } else if (key === "sources-errors") {
+                state.sources.onlyErrors = el.checked;
+                state.pages.sources.page = 0;
+                renderTable("sources");
+            }
+        }
+
+        const debouncedLiveFilter = debounce(applyLiveFilter, 160);
+
         document.addEventListener("click", (event) => {
+            const sortTh = event.target.closest("th[data-sort-table]");
+            if (sortTh) {
+                const tableId = sortTh.dataset.sortTable;
+                const key = sortTh.dataset.sortKey;
+                const current = state.sorts[tableId];
+                const dir = current && current.key === key && current.dir === "desc" ? "asc" : "desc";
+                state.sorts[tableId] = { key, dir };
+                if (state.pages[tableId]) state.pages[tableId].page = 0;
+                renderTable(tableId);
+                return;
+            }
+
+            const pageBtn = event.target.closest("[data-table-page]");
+            if (pageBtn) {
+                const tableId = pageBtn.dataset.tablePage;
+                state.pages[tableId].page += Number(pageBtn.dataset.step);
+                renderTable(tableId);
+                return;
+            }
+
             const element = event.target.closest("[data-action]");
             if (element) run(() => actions[element.dataset.action](element, event));
         });
+
         document.addEventListener("submit", (event) => {
             const form = event.target.closest("[data-form]");
             if (!form) return;
             event.preventDefault();
             run(() => forms[form.dataset.form](form));
         });
-        // Los desplegables y checkboxes de los filtros se aplican al cambiar; los campos de texto, con Enter.
+
+        document.addEventListener("input", (event) => {
+            const el = event.target.closest("[data-live-filter]");
+            if (el && el.tagName === "INPUT" && el.type !== "checkbox") debouncedLiveFilter(el);
+        });
+
         document.addEventListener("change", (event) => {
+            const pageSizeSel = event.target.closest("[data-table-pagesize]");
+            if (pageSizeSel) {
+                const tableId = pageSizeSel.dataset.tablePagesize;
+                state.pages[tableId].pageSize = Number(pageSizeSel.value);
+                state.pages[tableId].page = 0;
+                renderTable(tableId);
+                return;
+            }
+
+            const liveEl = event.target.closest("[data-live-filter]");
+            if (liveEl && (liveEl.tagName === "SELECT" || liveEl.type === "checkbox")) {
+                applyLiveFilter(liveEl);
+                return;
+            }
+
             const form = event.target.closest("form[data-autosubmit]");
             if (form && (event.target.tagName === "SELECT" || event.target.type === "checkbox")) form.requestSubmit();
         });
+
         window.addEventListener("hashchange", render);
         render();
     </script>
